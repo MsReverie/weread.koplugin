@@ -121,16 +121,20 @@ Feature PRs must describe:
 ### Project conventions / 项目约定
 
 - Code, variable names, and commit messages should be in English.
-- User-facing strings should use `_()` and be translated in `lib/i18n.lua`.
-- If menu items are added, removed, renamed, or moved, update `main.lua`, `lib/i18n.lua`, and the README menu tree together.
+- All project-owned Lua modules must live under the `weread/` namespace: non-UI code in `weread/lib/` using `require("weread.lib.<module>")`, and UI code in `weread/ui/` using `require("weread.ui.<module>")`.
+- Do not add project-owned modules to root-level `lib/` or `ui/`, or load them through bare `lib.*` / `ui.*` module keys. KOReader-owned imports such as `require("ui/widget/menu")` are exempt.
+- User-facing strings should use `_()` and be translated in `weread/lib/i18n.lua`.
+- If menu items are added, removed, renamed, or moved, update `weread/ui/menu.lua` (or the owning feature UI module), `weread/lib/i18n.lua`, and the README menu tree together.
 - For non-public WeRead Web APIs, include a standalone reproducible Python verification script in `scripts/` before implementing it in Lua.
 - Do not commit KOReader `settings/weread.lua`, generated EPUB/cache files, API keys, cookies, anti-abuse headers, or private book content.
 
 项目约定：
 
 - 代码、变量名和 commit message 使用英文。
-- 用户可见文本需要使用 `_()`，并在 `lib/i18n.lua` 中添加中文翻译。
-- 如果新增、删除、重命名或移动菜单项，需要同时更新 `main.lua`、`lib/i18n.lua` 和 README 菜单结构。
+- 所有项目自有 Lua 模块必须位于 `weread/` 命名空间下：非 UI 代码放在 `weread/lib/`，并使用 `require("weread.lib.<module>")`；UI 代码放在 `weread/ui/`，并使用 `require("weread.ui.<module>")`。
+- 不要在根目录新增项目自有的 `lib/` 或 `ui/` 模块，也不要使用裸 `lib.*` / `ui.*` 模块键。`require("ui/widget/menu")` 等 KOReader 自带依赖不受此限制。
+- 用户可见文本需要使用 `_()`，并在 `weread/lib/i18n.lua` 中添加中文翻译。
+- 如果新增、删除、重命名或移动菜单项，需要同时更新 `weread/ui/menu.lua`（或对应功能的 UI 模块）、`weread/lib/i18n.lua` 和 README 菜单结构。
 - 涉及非公开 WeRead Web API 时，必须先在 `scripts/` 中提交可独立运行、可复现的 Python 验证脚本，再实现 Lua 版本。
 - 不要提交 KOReader 的 `settings/weread.lua`、生成的 EPUB/cache、API key、cookie、反滥用请求头或私人书籍内容。
 

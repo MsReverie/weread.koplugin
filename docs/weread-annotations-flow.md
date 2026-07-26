@@ -27,14 +27,14 @@
 
 ## 阶段一：下载（Download）
 
-前提：开启「下载划线和想法」（设置项 `cache.download_underlines_and_thoughts`）。在 `lib/downloader.lua` 的每章下载流程中：
+前提：开启「下载划线和想法」（设置项 `cache.download_underlines_and_thoughts`）。在 `weread/lib/downloader.lua` 的每章下载流程中：
 
-1. **拉划线** —— `_startAnnotations` → `Thoughts.fetch_underlines`（`lib/thoughts.lua`）→ `client:get_chapter_underlines`（`lib/client.lua`）→ gateway API **`/book/underlines`**。返回该章所有划线，每条带一个 `range`，如 `"383-415"` —— 这是**原始章节 HTML 的 rune（UTF-8 字符）索引区间**。
-2. **分批拉想法** —— 收集所有 range → `build_chapter_review_batches`（`lib/client.lua`，每 5 个 range 一批）→ `_annotationBatch` 逐批 → `get_chapter_reviews_batch` → gateway API **`/book/readreviews`**。返回每个 range 上的想法 `reviews`（含作者、内容、点赞数、引用原文 `abstract`）。批次间 0.3s 间隔 + 失败重试 2 次（防限流）。
+1. **拉划线** —— `_startAnnotations` → `Thoughts.fetch_underlines`（`weread/lib/thoughts.lua`）→ `client:get_chapter_underlines`（`weread/lib/client.lua`）→ gateway API **`/book/underlines`**。返回该章所有划线，每条带一个 `range`，如 `"383-415"` —— 这是**原始章节 HTML 的 rune（UTF-8 字符）索引区间**。
+2. **分批拉想法** —— 收集所有 range → `build_chapter_review_batches`（`weread/lib/client.lua`，每 5 个 range 一批）→ `_annotationBatch` 逐批 → `get_chapter_reviews_batch` → gateway API **`/book/readreviews`**。返回每个 range 上的想法 `reviews`（含作者、内容、点赞数、引用原文 `abstract`）。批次间 0.3s 间隔 + 失败重试 2 次（防限流）。
 
 ## 阶段二：嵌入 EPUB（Process & Save）
 
-`_applyAnnotations` → `Thoughts.apply_data`（`lib/thoughts.lua`）→ **`Annotations.process`**（`lib/annotations.lua`）。这是核心。
+`_applyAnnotations` → `Thoughts.apply_data`（`weread/lib/thoughts.lua`）→ **`Annotations.process`**（`weread/lib/annotations.lua`）。这是核心。
 
 > **关键约束**：range 是**原始 HTML 的字符索引**，因此注释注入必须在图片改写等步骤之前完成，否则索引会错位。
 
@@ -94,10 +94,10 @@
 
 | 文件 | 职责 |
 |------|------|
-| `lib/downloader.lua` | 下载状态机，逐章调用划线/想法抓取与嵌入 |
-| `lib/client.lua` | gateway API：`/book/underlines`、`/book/readreviews`，range 分批 |
-| `lib/thoughts.lua` | 下载编排、SQLite 写入、CSS 合并 |
-| `lib/thought_db.lua` | SQLite schema、事务写入、按 range 索引查询 |
-| `lib/annotations.lua` | 注入下划线与普通内部链接，并规范化原生弹框字段 |
-| `ui/thought_popup.lua` | 展示：原生 TextViewer、上一页/下一页导航 |
+| `weread/lib/downloader.lua` | 下载状态机，逐章调用划线/想法抓取与嵌入 |
+| `weread/lib/client.lua` | gateway API：`/book/underlines`、`/book/readreviews`，range 分批 |
+| `weread/lib/thoughts.lua` | 下载编排、SQLite 写入、CSS 合并 |
+| `weread/lib/thought_db.lua` | SQLite schema、事务写入、按 range 索引查询 |
+| `weread/lib/annotations.lua` | 注入下划线与普通内部链接，并规范化原生弹框字段 |
+| `weread/ui/thought_popup.lua` | 展示：原生 TextViewer、上一页/下一页导航 |
 | `main.lua` | tap 拦截、SQLite 查询、显隐开关、会话防错 |

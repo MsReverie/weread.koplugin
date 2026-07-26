@@ -1,5 +1,5 @@
 local bit = require("bit")
-local Crypto = require("lib.crypto")
+local Crypto = require("weread.lib.crypto")
 
 local WeRead = {}
 

@@ -1,4 +1,4 @@
-local PositionMapper = require("lib.position_mapper")
+local PositionMapper = require("weread.lib.position_mapper")
 
 local ok_logger, logger = pcall(require, "logger")
 if not ok_logger then logger = nil end

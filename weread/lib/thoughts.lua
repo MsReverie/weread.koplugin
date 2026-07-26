@@ -1,4 +1,4 @@
-local Annotations = require("lib.annotations")
+local Annotations = require("weread.lib.annotations")
 
 local ok_logger, logger = pcall(require, "logger")
 if not ok_logger then
@@ -57,9 +57,9 @@ function Thoughts.apply_data(settings, book_id, chapter_uid, xhtml, underlines_d
     end
     local rebuild_db = opts and opts.rebuild_thought_db
     if rebuild_db or type(reviews) == "table" then
-        local Content = require("lib.content")
+        local Content = require("weread.lib.content")
         local book_dir = Content.book_resolved_dir(settings, book_id, book)
-        local ThoughtDB = require("lib.thought_db")
+        local ThoughtDB = require("weread.lib.thought_db")
         if rebuild_db then
             ThoughtDB.remove_db(book_dir)
         end

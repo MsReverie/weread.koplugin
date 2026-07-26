@@ -1,8 +1,8 @@
 local ltn12 = require("ltn12")
 local socketutil = require("socketutil")
 local http = require("socket.http")
-local Cookie = require("lib.cookie")
-local WeRead = require("lib.weread")
+local Cookie = require("weread.lib.cookie")
+local WeRead = require("weread.lib.protocol")
 
 local ok_json, json = pcall(require, "json")
 if not ok_json then

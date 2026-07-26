@@ -1,9 +1,9 @@
--- Unit tests for lib/progress_sync.lua.
+-- Unit tests for weread/lib/progress_sync.lua.
 -- Run from the repo root with:
 --   lua spec/progress_sync_spec.lua
 
 package.path = "./?.lua;" .. package.path
-local ProgressSync = require("lib.progress_sync")
+local ProgressSync = require("weread.lib.progress_sync")
 
 local failures, checks = 0, 0
 local current_test

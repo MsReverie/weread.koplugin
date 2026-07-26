@@ -19,11 +19,11 @@ local logger = require("logger")
 local time = require("ui/time")
 local T = require("ffi/util").template
 
-local Content = require("lib.content")
-local DownloadDialog = require("ui.download_dialog")
-local I18n = require("lib.i18n")
-local Thoughts = require("lib.thoughts")
-local WeRead = require("lib.weread")
+local Content = require("weread.lib.content")
+local DownloadDialog = require("weread.ui.download_dialog")
+local I18n = require("weread.lib.i18n")
+local Thoughts = require("weread.lib.thoughts")
+local WeRead = require("weread.lib.protocol")
 
 local LOG_MODULE = "[WeRead]"
 

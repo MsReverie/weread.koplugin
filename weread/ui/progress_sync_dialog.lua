@@ -3,7 +3,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local UIManager = require("ui/uimanager")
 local T = require("ffi/util").template
 
-local I18n = require("lib.i18n")
+local I18n = require("weread.lib.i18n")
 
 local ProgressSyncDialog = {}
 

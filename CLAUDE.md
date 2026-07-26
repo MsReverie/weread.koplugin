@@ -7,32 +7,51 @@ KOReader plugin for reading WeRead (微信读书) books and MP articles on e-ink
 ## Language
 
 - Code, variable names, commit messages: English
-- User-facing strings: wrapped in `_()` for i18n, Chinese translations in `lib/i18n.lua`
+- User-facing strings: wrapped in `_()` for i18n, Chinese translations in `weread/lib/i18n.lua`
 - Communication with user: Simplified Chinese (简体中文)
 
 ## Architecture
 
 ```
-main.lua               Plugin entry and UI/event wiring
-lib/client.lua          HTTP client (cookie-auth Web API + Bearer-auth gateway API)
-lib/book_store.lua      Per-book metadata, reading-state, and article-list persistence
-lib/content.lua         Content decoding (e_0/e_1/e_2/e_3), EPUB/HTML generation
-lib/cookie.lua          Cookie header parsing and merging
-lib/crypto.lua          SHA-256, MD5 (pure Lua)
-lib/downloader.lua      Book/chapter download engine (state machine + standby guard)
-lib/i18n.lua            Chinese translations (zh table, _() wrapper)
-lib/position_mapper.lua Pure KOReader ↔ WeRead chapter/offset mapping
-lib/progress_sync.lua   Automatic progress-sync state machine and safety gate
-lib/read_report.lua     Reading-report state machine, context refresh, retries
-lib/reader_state.lua    Web Reader session and position extraction
-lib/settings.lua        Settings persistence via KOReader LuaSettings
-lib/weread.lua          WeRead protocol utilities (encoding, signing, URL helpers)
-ui/download_dialog.lua  Custom download progress dialog with cancel button
-ui/progress_sync_dialog.lua Progress conflict and sync-result dialogs
-ui/thought_popup.lua    Native underline/thought TextViewer with previous/next paging
+main.lua                       Plugin entry, dependency construction, and module composition
+weread/lib/mixin.lua          Collision-safe composition of feature methods into the plugin class
+weread/lib/migrations.lua     Settings and per-book storage migrations
+weread/lib/plugin_util.lua    Shared translation, logging, error, timing, and file helpers
+weread/lib/reader_lifecycle.lua KOReader lifecycle and reader-state orchestration
+weread/lib/client.lua         HTTP client (cookie-auth Web API + Bearer-auth gateway API)
+weread/lib/book_store.lua     Per-book metadata, reading-state, and article-list persistence
+weread/lib/content.lua        Content decoding (e_0/e_1/e_2/e_3), EPUB/HTML generation
+weread/lib/cookie.lua         Cookie header parsing and merging
+weread/lib/crypto.lua         SHA-256, MD5 (pure Lua)
+weread/lib/downloader.lua     Book/chapter download engine (state machine + standby guard)
+weread/lib/i18n.lua           Chinese translations (zh table, _() wrapper)
+weread/lib/position_mapper.lua Pure KOReader ↔ WeRead chapter/offset mapping
+weread/lib/progress_sync.lua  Automatic progress-sync state machine and safety gate
+weread/lib/read_report.lua    Reading-report state machine, context refresh, retries
+weread/lib/reader_state.lua   Web Reader session and position extraction
+weread/lib/settings.lua       Settings persistence via KOReader LuaSettings
+weread/lib/protocol.lua       WeRead protocol utilities (encoding, signing, URL helpers)
+weread/ui/menu.lua            Main menu and settings menu composition
+weread/ui/common.lua          Shared dialog, network-task, and account UI helpers
+weread/ui/cache.lua           Cache settings, directory selection, scan, and cleanup flows
+weread/ui/library.lua         Bookshelf, book, chapter, public-account, and search flows
+weread/ui/read_report.lua     Reading-report settings, target picker, and statistics flow
+weread/ui/annotations_controller.lua Annotation visibility and thought-link interaction
+weread/ui/reader_navigation.lua End-of-book navigation integration
+weread/ui/download_dialog.lua Custom download progress dialog with cancel button
+weread/ui/progress_sync_dialog.lua Progress conflict and sync-result dialogs
+weread/ui/thought_popup.lua   Native underline/thought TextViewer with previous/next paging
 ```
 
 ## Key Conventions
+
+### Module Namespace
+
+- Keep every project-owned Lua module under the `weread/` namespace directory.
+- Put non-UI modules in `weread/lib/` and load them with `require("weread.lib.<module>")`.
+- Put UI and presentation modules in `weread/ui/` and load them with `require("weread.ui.<module>")`.
+- Do not add project-owned modules under root-level `lib/` or `ui/`, and do not use bare `lib.*` or `ui.*` module keys. KOReader-owned imports such as `require("ui/widget/menu")` are not affected.
+- Keep only KOReader plugin entry files such as `main.lua` and `_meta.lua` at the plugin root.
 
 ### KOReader Plugin API
 
@@ -64,12 +83,12 @@ end)
 ### Translation Pattern
 
 ```lua
--- In main.lua:
-local function _(text) return I18n.tr(text) end
+local PluginUtil = require("weread.lib.plugin_util")
+local _ = PluginUtil.tr
 _("English key")                    -- simple
 T(_("Template %1"), value)          -- with substitution (ffi/util.template)
 
--- In lib/i18n.lua, add to zh table:
+-- In weread/lib/i18n.lua, add to zh table:
 ["English key"] = "中文翻译",
 ```
 
@@ -81,8 +100,8 @@ Use `_i` (not `_`) in `for _i, item in ipairs(...)` to avoid shadowing the `_()`
 
 Whenever a menu item is added, removed, renamed, or moved:
 
-- Update the menu definition in `main.lua`
-- Add, rename, or remove the corresponding translation entry in `lib/i18n.lua`; do not leave unused menu translation keys behind
+- Update the menu definition in `weread/ui/menu.lua` (or the owning feature UI module)
+- Add, rename, or remove the corresponding translation entry in `weread/lib/i18n.lua`; do not leave unused menu translation keys behind
 - Keep the menu tree in `README.md` in sync
 - Search all three files for the old and new labels before considering the change complete
 

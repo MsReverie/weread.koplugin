@@ -1,12 +1,12 @@
-local Cookie = require("lib.cookie")
+local Cookie = require("weread.lib.cookie")
 local Device = require("device")
-local I18n = require("lib.i18n")
+local I18n = require("weread.lib.i18n")
 local InputDialog = require("ui/widget/inputdialog")
 local logger = require("logger")
 local QRMessage = require("ui/widget/qrmessage")
 local T = require("ffi/util").template
 local UIManager = require("ui/uimanager")
-local WeRead = require("lib.weread")
+local WeRead = require("weread.lib.protocol")
 
 local function _(text)
     return I18n.tr(text)

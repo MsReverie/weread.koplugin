@@ -1,5 +1,5 @@
-local Content = require("lib.content")
-local WeRead = require("lib.weread")
+local Content = require("weread.lib.content")
+local WeRead = require("weread.lib.protocol")
 
 local ok_logger, logger = pcall(require, "logger")
 if not ok_logger then

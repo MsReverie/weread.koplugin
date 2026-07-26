@@ -43,21 +43,21 @@ package.preload["ffi/util"] = function()
         end,
     }
 end
-package.preload["lib.content"] = function()
+package.preload["weread.lib.content"] = function()
     return {
         save_chapter_epub = function()
             return "/cache/book/chapter-22.epub"
         end,
     }
 end
-package.preload["ui.download_dialog"] = function() return {} end
-package.preload["lib.i18n"] = function()
+package.preload["weread.ui.download_dialog"] = function() return {} end
+package.preload["weread.lib.i18n"] = function()
     return { tr = function(text) return text end }
 end
-package.preload["lib.thoughts"] = function()
+package.preload["weread.lib.thoughts"] = function()
     return { is_download_enabled = function() return false end }
 end
-package.preload["lib.weread"] = function()
+package.preload["weread.lib.protocol"] = function()
     return {
         normalize_cover_url = function(value) return value end,
         reader_url = function(book_id)
@@ -66,7 +66,7 @@ package.preload["lib.weread"] = function()
     }
 end
 
-local Downloader = require("lib.downloader")
+local Downloader = require("weread.lib.downloader")
 
 local failures, checks = 0, 0
 local function eq(got, want, label)

@@ -1,7 +1,7 @@
-local Crypto = require("lib.crypto")
-local ReaderState = require("lib.reader_state")
-local WeRead = require("lib.weread")
-local Thoughts = require("lib.thoughts")
+local Crypto = require("weread.lib.crypto")
+local ReaderState = require("weread.lib.reader_state")
+local WeRead = require("weread.lib.protocol")
+local Thoughts = require("weread.lib.thoughts")
 local bit = require("bit")
 local ok_logger, logger = pcall(require, "logger")
 if not ok_logger then

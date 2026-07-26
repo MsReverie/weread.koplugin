@@ -1,6 +1,6 @@
 local DataStorage = require("datastorage")
-local BookStore = require("lib.book_store")
-local Cookie = require("lib.cookie")
+local BookStore = require("weread.lib.book_store")
+local Cookie = require("weread.lib.cookie")
 local LuaSettings = require("luasettings")
 local lfs = require("libs/libkoreader-lfs")
 

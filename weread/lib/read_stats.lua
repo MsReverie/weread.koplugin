@@ -1,4 +1,4 @@
--- lib/read_stats.lua — WeRead reading statistics data layer.
+-- weread/lib/read_stats.lua — WeRead reading statistics data layer.
 --
 -- Pure logic, no UI dependencies:
 --   * calls the /readdata/detail gateway API (via the shared Client)

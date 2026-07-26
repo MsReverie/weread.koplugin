@@ -58,6 +58,15 @@ scripts/
 
 ```
 
+## 模块结构
+
+项目自有 Lua 模块必须放在 `weread/` 命名空间下：
+
+- 非 UI 模块：`weread/lib/`，使用 `require("weread.lib.<module>")`
+- UI 模块：`weread/ui/`，使用 `require("weread.ui.<module>")`
+- 禁止新增根级 `lib/`、`ui/` 项目模块或裸 `lib.*`、`ui.*` 模块键
+- `require("ui/widget/menu")` 等 KOReader 自带模块不受此限制
+
 ## 截图
 
 如果涉及 UI 或交互变更，请在这里添加截图或录屏。
@@ -68,6 +77,7 @@ scripts/
 - [ ] 如果是 bugfix，我已经提供复现步骤或关联 issue。
 - [ ] 如果是新增 UI/交互特性，我已经提供截图或录屏。
 - [ ] 我没有提交 KOReader `settings/weread.lua`、API key、cookie、token、`x-wrpa-*` 或私人书籍内容。
-- [ ] 如果修改了用户可见文本，我已经更新 `lib/i18n.lua`。
+- [ ] 新增或移动的项目 Lua 模块遵循 `weread/lib/`、`weread/ui/` 命名空间规范。
+- [ ] 如果修改了用户可见文本，我已经更新 `weread/lib/i18n.lua`。
 - [ ] 如果修改了菜单结构，我已经同步更新 README 菜单结构。
 - [ ] 如果涉及非公开 WeRead Web API，我已经在 `scripts/` 中提交可独立运行、可复现的 Python 验证脚本，并填写了复现命令和脱敏结果。

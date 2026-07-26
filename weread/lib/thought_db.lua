@@ -125,7 +125,7 @@ function ThoughtDB.getReviewItems(db, chapter_uid, range_str)
 end
 
 local function insert_reviews(db, chapter_uid, reviews)
-    local Annotations = require("lib.annotations")
+    local Annotations = require("weread.lib.annotations")
     local insert_stmt = db:prepare([[
         INSERT INTO review_items
             (chapter_uid, range, item_index, abstract, author, content, likes_count)

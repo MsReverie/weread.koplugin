@@ -1,6 +1,6 @@
--- ui/read_stats_view.lua — WeRead reading statistics visualization page.
+-- weread/ui/read_stats_view.lua — WeRead reading statistics visualization page.
 --
--- Pure presentation layer: given a normalized stats table (see lib/read_stats.lua)
+-- Pure presentation layer: given a normalized stats table (see weread/lib/read_stats.lua)
 -- and callbacks, it builds a full-screen, card-based, e-ink-friendly page that
 -- adapts to any screen width. It performs no network I/O.
 --
@@ -42,7 +42,7 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local Screen = Device.screen
-local I18n = require("lib.i18n")
+local I18n = require("weread.lib.i18n")
 local T = require("ffi/util").template
 
 local function _(text)
@@ -610,7 +610,7 @@ end
 local M = {}
 
 -- Show the statistics page.
---   data      : normalized stats table from lib/read_stats.lua
+--   data      : normalized stats table from weread/lib/read_stats.lua
 --   callbacks : { on_prev = fn, on_next = fn, on_switch = fn(mode) }
 -- Returns the widget instance.
 function M.show(data, callbacks)

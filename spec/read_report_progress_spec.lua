@@ -4,11 +4,11 @@
 
 package.path = "./?.lua;" .. package.path
 
-package.preload["lib.content"] = function()
+package.preload["weread.lib.content"] = function()
     return {}
 end
 
-package.preload["lib.weread"] = function()
+package.preload["weread.lib.protocol"] = function()
     return {
         e = function(value) return "e:" .. tostring(value) end,
         web_app_id = function() return "app" end,
@@ -38,7 +38,7 @@ package.preload["lib.weread"] = function()
     }
 end
 
-local ReadReport = require("lib.read_report")
+local ReadReport = require("weread.lib.read_report")
 
 local failures, checks = 0, 0
 local current_test

@@ -19,8 +19,8 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local Screen = Device.screen
 local T = require("ffi/util").template
 
-local BookReviews = require("lib.book_reviews")
-local I18n = require("lib.i18n")
+local BookReviews = require("weread.lib.book_reviews")
+local I18n = require("weread.lib.i18n")
 
 local function _(text)
     return I18n.tr(text)

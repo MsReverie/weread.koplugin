@@ -1,4 +1,4 @@
--- ui/end_of_book_dialog.lua — WeRead end-of-chapter navigation dialog.
+-- weread/ui/end_of_book_dialog.lua — WeRead end-of-chapter navigation dialog.
 --
 -- Pure presentation layer: given navigation options and callbacks, it builds a
 -- ButtonDialog offering bookshelf / chapter-list / next-chapter navigation when
@@ -8,7 +8,7 @@
 
 local ButtonDialog = require("ui/widget/buttondialog")
 local UIManager = require("ui/uimanager")
-local I18n = require("lib.i18n")
+local I18n = require("weread.lib.i18n")
 
 local function _(text)
     return I18n.tr(text)

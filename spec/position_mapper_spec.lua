@@ -1,9 +1,9 @@
--- Unit tests for lib/position_mapper.lua.
+-- Unit tests for weread/lib/position_mapper.lua.
 -- Run from the repo root with:
 --   lua spec/position_mapper_spec.lua
 
 package.path = "./?.lua;" .. package.path
-local Mapper = require("lib.position_mapper")
+local Mapper = require("weread.lib.position_mapper")
 
 local chapters = {
     { chapterUid = 11, chapterIdx = 1, wordCount = 100 },

@@ -7,7 +7,7 @@ Short pageReviews share a dialog page until the native text layout is full;
 long items use fewer pages and an oversized single item remains scrollable.
 Explicit previous/next buttons navigate between these measured groups.
 
-@module ui.thought_popup
+@module weread.ui.thought_popup
 --]]--
 
 local Device = require("device")
@@ -16,8 +16,8 @@ local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextViewer = require("ui/widget/textviewer")
 local UIManager = require("ui/uimanager")
 
-local Annotations = require("lib.annotations")
-local I18n = require("lib.i18n")
+local Annotations = require("weread.lib.annotations")
+local I18n = require("weread.lib.i18n")
 
 local Screen = Device.screen
 local THOUGHT_SEPARATOR = "\n\n"
