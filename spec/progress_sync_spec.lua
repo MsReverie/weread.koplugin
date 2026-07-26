@@ -151,6 +151,21 @@ test("matching open progress verifies the reporting gate", function()
     eq(position.chapter_offset, 150, "live offset")
 end)
 
+test("nearby progress within two percent is treated as aligned", function()
+    local f = fixture({
+        bookId = "book",
+        progress = 26.9,
+        chapterUid = 22,
+        chapterIdx = 2,
+        chapterOffset = 169,
+        updateTime = 10,
+    })
+    f.sync:on_reader_ready()
+    f.drain()
+    eq(f.sync:status().verified, true, "nearby position verifies")
+    eq(#f.choices, 0, "nearby position does not prompt")
+end)
+
 test("unresolved conflict blocks reports and local choice uploads", function()
     local f = fixture({
         bookId = "book",

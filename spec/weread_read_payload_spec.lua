@@ -3,12 +3,31 @@
 --   lua spec/weread_read_payload_spec.lua
 
 package.path = "./?.lua;" .. package.path
-package.preload["bit"] = function()
-    return {
-        band = function(a, b) return a & b end,
-        bxor = function(a, b) return a ~ b end,
-        lshift = function(a, b) return a << b end,
-    }
+local has_bit = pcall(require, "bit")
+if not has_bit then
+    local function binary_op(a, b, xor)
+        local result = 0
+        local place = 1
+        while a > 0 or b > 0 do
+            local a_bit = a % 2
+            local b_bit = b % 2
+            if (xor and a_bit ~= b_bit)
+                or (not xor and a_bit == 1 and b_bit == 1) then
+                result = result + place
+            end
+            a = math.floor(a / 2)
+            b = math.floor(b / 2)
+            place = place * 2
+        end
+        return result
+    end
+    package.preload["bit"] = function()
+        return {
+            band = function(a, b) return binary_op(a, b, false) end,
+            bxor = function(a, b) return binary_op(a, b, true) end,
+            lshift = function(a, b) return (a * 2 ^ b) % 2 ^ 32 end,
+        }
+    end
 end
 package.preload["lib.crypto"] = function()
     return {
