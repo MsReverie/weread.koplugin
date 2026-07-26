@@ -9,56 +9,10 @@ local LOG_MODULE = "[WeRead]"
 
 local Thoughts = {}
 
-local function basename_safe(value)
-    value = tostring(value or ""):gsub("[^%w%._-]", "_")
-    if value == "" then
-        value = "unknown"
-    end
-    return value
-end
-
 local function log_info(...)
     if logger then
         logger.info(LOG_MODULE, ...)
     end
-end
-
-function Thoughts.cache_dir(settings, book_id)
-    return settings.cache_dir .. "/" .. basename_safe(book_id) .. "/thoughts"
-end
-
-function Thoughts.cache_path(settings, book_id, chapter_uid)
-    return Thoughts.cache_dir(settings, book_id) .. "/" .. tostring(chapter_uid) .. ".json"
-end
-
-
---- 读取某章缓存的想法数据（save_cache 的对称读取端）。
--- 点击划线时由 main.lua 调用，按 range 匹配后渲染弹窗。
--- @return table|nil  原始 reviews 数组（每元素含 .range / .pageReviews），失败返回 nil
-function Thoughts.load_cache(settings, book_id, chapter_uid)
-    local path = Thoughts.cache_path(settings, book_id, chapter_uid)
-    local file = io.open(path, "r")
-    if not file then
-        return nil
-    end
-    local data = file:read("*a") or ""
-    file:close()
-    if data == "" then
-        return nil
-    end
-    -- Prefer rapidjson (C parser) — much faster than the pure-Lua json module,
-    -- which matters for chapters with many thoughts (large JSON) on slow devices.
-    local ok, decoded = pcall(function()
-        local json = require("rapidjson")
-        return json.decode and json.decode(data) or json:decode(data)
-    end)
-    if not ok or type(decoded) ~= "table" then
-        ok, decoded = pcall(require("json").decode, data)
-    end
-    if not ok or type(decoded) ~= "table" then
-        return nil
-    end
-    return decoded
 end
 
 function Thoughts.collect_ranges(underlines_data)
@@ -101,21 +55,20 @@ function Thoughts.apply_data(settings, book_id, chapter_uid, xhtml, underlines_d
     if type(underlines_data) ~= "table" then
         underlines_data = {}
     end
-    if type(reviews) == "table" and #reviews > 0 then
+    local rebuild_db = opts and opts.rebuild_thought_db
+    if rebuild_db or type(reviews) == "table" then
         local Content = require("lib.content")
         local book_dir = Content.book_resolved_dir(settings, book_id, book)
         local ThoughtDB = require("lib.thought_db")
-        if opts and opts.rebuild_thought_db then
+        if rebuild_db then
             ThoughtDB.remove_db(book_dir)
         end
-        local db = ThoughtDB.open(book_dir)
-        if not db then
-            ThoughtDB.remove_db(book_dir)
-            db = ThoughtDB.open(book_dir)
-        end
-        if db then
-            pcall(ThoughtDB.putReviews, db, chapter_uid, reviews)
-            ThoughtDB.close(db)
+        if type(reviews) == "table" then
+            local db = ThoughtDB.open(book_dir)
+            if db then
+                pcall(ThoughtDB.putReviews, db, chapter_uid, reviews)
+                ThoughtDB.close(db)
+            end
         end
     end
     underlines_data.chapterUid = chapter_uid

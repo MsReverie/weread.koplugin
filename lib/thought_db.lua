@@ -1,18 +1,13 @@
 --[[--
-SQLite-based thought storage for WeRead KOReader plugin.
+Normalized SQLite thought storage for the WeRead KOReader plugin.
 
 One database per book directory: {book_dir}/thoughts.db
 
-Schema per lua-ljsqlite3 conventions:
-  reviews(chapter_uid, range, review_json, review_html, item_count, updated_at)
-  covering index on (chapter_uid, range)
-
-Write: putReview / putReviews (from lib/thoughts.lua:apply_data).
-Read:  getReviewHTML (from main.lua:_buildThoughtHtmlFromHref).
+Each pageReview is stored as one row. Tapping an underline performs a single
+indexed lookup by (chapter_uid, range), without decoding JSON or rendering HTML.
 --]]--
 
 local logger = require("logger")
-local JSON = require("json")
 
 local ThoughtDB = {}
 
@@ -47,7 +42,7 @@ function ThoughtDB.open(book_dir)
 
     local SQ3 = getSQ3()
     if not SQ3 then
-        logger.info("weread: thought_db lua-ljsqlite3 unavailable, fallback to json")
+        logger.warn("weread: thought_db lua-ljsqlite3 unavailable")
         return nil
     end
 
@@ -65,20 +60,19 @@ function ThoughtDB.open(book_dir)
     pcall(function() db:exec("PRAGMA synchronous=NORMAL") end)
 
     local schema_ok, schema_err = pcall(function()
+        -- Development-only predecessor; this format was never released.
+        db:exec("DROP TABLE IF EXISTS reviews")
         db:exec([[
-            CREATE TABLE IF NOT EXISTS reviews (
+            CREATE TABLE IF NOT EXISTS review_items (
                 chapter_uid INTEGER NOT NULL,
                 range       TEXT    NOT NULL,
-                review_json TEXT    NOT NULL,
-                review_html TEXT    NOT NULL,
-                item_count  INTEGER NOT NULL DEFAULT 0,
-                updated_at  INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (chapter_uid, range)
-            )
-        ]])
-        db:exec([[
-            CREATE INDEX IF NOT EXISTS idx_reviews_lookup
-            ON reviews(chapter_uid, range)
+                item_index  INTEGER NOT NULL,
+                abstract    TEXT,
+                author      TEXT    NOT NULL,
+                content     TEXT    NOT NULL,
+                likes_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (chapter_uid, range, item_index)
+            ) WITHOUT ROWID
         ]])
     end)
     if not schema_ok then
@@ -91,72 +85,113 @@ function ThoughtDB.open(book_dir)
     return db
 end
 
---- Look up pre-built popup HTML for a (chapter_uid, range) pair.
-function ThoughtDB.getReviewHTML(db, chapter_uid, range_str)
+--- Look up native-dialog thought records for a (chapter_uid, range) pair.
+function ThoughtDB.getReviewItems(db, chapter_uid, range_str)
     if not db then return nil end
-
-    local SQ3 = getSQ3()
-    if not SQ3 then return nil end
-
-    local ok, stmt = pcall(function()
-        return db:prepare(
-            "SELECT review_html, item_count FROM reviews WHERE chapter_uid=? AND range=?"
-        )
-    end)
-    if not ok or not stmt then return nil end
-
-    local step_ok, row = pcall(function()
-        return stmt:reset():bind(chapter_uid, range_str):step()
-    end)
-    if step_ok and row then
-        return row[1], row[2]
-    end
-    return nil
-end
-
---- Insert or replace a single review row.
-function ThoughtDB.putReview(db, chapter_uid, review, review_html)
-    if not db or type(review) ~= "table" then return end
-
-    local range_str = review.range
-    if type(range_str) ~= "string" or range_str == "" then return end
-
-    local json_str = JSON.encode(review)
-    local item_count = review.pageReviews and #review.pageReviews or 0
 
     local ok, stmt = pcall(function()
         return db:prepare([[
-            INSERT OR REPLACE INTO reviews
-                (chapter_uid, range, review_json, review_html, item_count, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            SELECT abstract, author, content, likes_count
+            FROM review_items
+            WHERE chapter_uid=? AND range=?
+            ORDER BY item_index
         ]])
     end)
-    if not ok or not stmt then return end
+    if not ok or not stmt then return nil end
 
-    stmt:reset():bind(chapter_uid, range_str, json_str, review_html or "", item_count, os.time()):step()
+    local items = {}
+    local step_ok, row = pcall(function()
+        return stmt:reset():bind(chapter_uid, range_str):step()
+    end)
+    if not step_ok then
+        pcall(function() stmt:close() end)
+        return nil
+    end
+    while row do
+        items[#items + 1] = {
+            abstract = row[1],
+            author = row[2],
+            content = row[3],
+            likes_count = row[4],
+        }
+        step_ok, row = pcall(function() return stmt:step() end)
+        if not step_ok then
+            pcall(function() stmt:close() end)
+            return nil
+        end
+    end
+    pcall(function() stmt:close() end)
+    return items
 end
 
---- Batch-insert all reviews for a chapter in a single transaction.
-function ThoughtDB.putReviews(db, chapter_uid, reviews)
-    if not db or type(reviews) ~= "table" then return end
-
+local function insert_reviews(db, chapter_uid, reviews)
     local Annotations = require("lib.annotations")
+    local insert_stmt = db:prepare([[
+        INSERT INTO review_items
+            (chapter_uid, range, item_index, abstract, author, content, likes_count)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ]])
 
-    pcall(function() db:exec("BEGIN") end)
-
-    local count = 0
-    for _, rv in ipairs(reviews) do
-        if type(rv) == "table" then
-            local review_html = Annotations.buildThoughtPopupHtml(rv)
-            ThoughtDB.putReview(db, chapter_uid, rv, review_html)
-            count = count + 1
+    local by_range = {}
+    local range_order = {}
+    for _, review in ipairs(reviews) do
+        local range_str = type(review) == "table" and review.range or nil
+        if type(range_str) == "string" and range_str ~= "" then
+            if not by_range[range_str] then
+                range_order[#range_order + 1] = range_str
+            end
+            by_range[range_str] = review
         end
     end
 
-    pcall(function() db:exec("COMMIT") end)
+    local inserted = 0
+    for _, range_str in ipairs(range_order) do
+        local items = Annotations.buildThoughtPopupItems(by_range[range_str])
+        for item_index, item in ipairs(items) do
+            insert_stmt:reset():bind(
+                chapter_uid, range_str, item_index,
+                item.abstract, item.author, item.content, item.likes_count
+            ):step()
+            inserted = inserted + 1
+        end
+    end
+    insert_stmt:close()
+    return inserted
+end
+
+--- Replace all thought rows for one chapter in a single transaction.
+function ThoughtDB.putReviews(db, chapter_uid, reviews)
+    if not db or type(reviews) ~= "table" then return false end
+
+    local transaction_open = false
+    local ok, err = pcall(function()
+        db:exec("BEGIN")
+        transaction_open = true
+
+        local delete_stmt = db:prepare(
+            "DELETE FROM review_items WHERE chapter_uid=?"
+        )
+        delete_stmt:reset():bind(chapter_uid):step()
+        delete_stmt:close()
+
+        insert_reviews(db, chapter_uid, reviews)
+
+        db:exec("COMMIT")
+        transaction_open = false
+    end)
+
+    if not ok then
+        if transaction_open then
+            pcall(function() db:exec("ROLLBACK") end)
+        end
+        logger.warn("weread: thought_db chapter write failed:",
+            "chapter_uid=", tostring(chapter_uid), "error=", tostring(err))
+        return false
+    end
 
     logger.info("weread: thought_db written chapter_uid=", chapter_uid,
-        " count=", #reviews)
+        " ranges=", #reviews)
+    return true
 end
 
 --- Close the database handle.

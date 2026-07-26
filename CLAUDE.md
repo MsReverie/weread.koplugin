@@ -26,7 +26,7 @@ lib/reader_state.lua    Web Reader session and position extraction
 lib/settings.lua        Settings persistence via KOReader LuaSettings
 lib/weread.lua          WeRead protocol utilities (encoding, signing, URL helpers)
 ui/download_dialog.lua  Custom download progress dialog with cancel button
-ui/thought_popup.lua    Underline/thought popup widget (ScrollHtmlWidget, font preheat)
+ui/thought_popup.lua    Native underline/thought TextViewer with previous/next paging
 ```
 
 ## Key Conventions

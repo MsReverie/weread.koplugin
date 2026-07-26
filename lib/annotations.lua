@@ -57,20 +57,6 @@ local function toRunes(str)
     return runes
 end
 
---- 按 rune 数量截断字符串，避免 UTF-8 多字节字符被切半。
-local function truncateRunes(str, max_runes)
-    if type(str) ~= "string" or max_runes <= 0 then return "" end
-    local runes = toRunes(str)
-    if #runes <= max_runes then
-        return str
-    end
-    local parts = {}
-    for i = 1, max_runes do
-        parts[#parts + 1] = runes[i]
-    end
-    return table.concat(parts) .. "…"
-end
-
 --- 解析 range 字符串（如 "383-415"）为起止位置。
 -- 注意：微信读书 API 返回的 range 是 0 索引（JavaScript 惯例），
 -- 但 Lua 使用 1 索引。需要加 1 转换。
@@ -247,54 +233,52 @@ end
 
 Annotations.thoughtAnchorId = thoughtAnchorId
 
---- 把单条 range 想法渲染成弹窗用 HTML 片段。
--- 点击划线时由 main.lua 从每章 thoughts/<uid>.json 现取 range_review 并调用此函数。
--- 想法不再写入 EPUB（不生成 <aside> 脚注），因此这里用普通 <div>，纯内联样式，
--- 与 ui/thought_popup.lua 的默认 CSS 无耦合。
--- @table range_review  单条 range 的想法数据（含 .pageReviews）
--- @return string|nil  HTML 片段
-function Annotations.buildThoughtPopupHtml(range_review)
+--- Convert one range review into the small, plain-text records used by the
+-- native thought dialog. Keeping these fields separate in SQLite means a tap
+-- never has to decode the chapter JSON or start an HTML renderer.
+-- @table range_review  A range review containing .pageReviews
+-- @return table  Ordered thought items
+function Annotations.buildThoughtPopupItems(range_review)
     if type(range_review) ~= "table" or type(range_review.pageReviews) ~= "table"
         or #range_review.pageReviews == 0 then
-        return nil
+        return {}
     end
 
-    local parts = { '<div class="weread-thought">' }
-
-    -- 引用原文（截断）
-    local abstract = nil
-    local first_pr = range_review.pageReviews[1]
-    if first_pr and first_pr.review then
-        abstract = first_pr.review.abstract or first_pr.review.contextAbstract
-    end
-
+    local items = {}
     for i, pr in ipairs(range_review.pageReviews) do
         local review = pr.review or {}
         local author = review.author or {}
-        local name = author.nick or author.name or "匿名"
-        local content = review.content or ""
-        local likes = pr.likesCount or 0
-
-        parts[#parts + 1] = '<p style="white-space:pre-line">'
-
-        -- 第一条想法附带引用原文
-        if i == 1 and abstract then
-            local q = truncateRunes(abstract, 50)
-            parts[#parts + 1] = '<span style="color:#666;font-style:italic">「' ..
-            htmlEscape(q) .. '」</span><br/>'
+        local abstract = nil
+        if i == 1 then
+            abstract = review.abstract or review.contextAbstract
+            if type(abstract) ~= "string" or abstract == "" then
+                abstract = nil
+            end
         end
+        items[#items + 1] = {
+            abstract = abstract,
+            author = tostring(author.nick or author.name or "匿名"),
+            content = tostring(review.content or ""),
+            likes_count = tonumber(pr.likesCount) or 0,
+        }
+    end
+    return items
+end
 
-        -- 作者 + 点赞
-        local meta = "▸ " .. htmlEscape(name)
-        if likes > 0 then meta = meta .. " · ♥ " .. likes end
-        parts[#parts + 1] = '<span style="color:#999;font-size:0.85em">' .. meta .. '</span><br/>'
-
-        -- 正文
-        parts[#parts + 1] = '<span>' .. htmlEscape(content) .. '</span>'
-        parts[#parts + 1] = '</p>'
+--- Format a normalized thought item for KOReader's native TextViewer.
+function Annotations.formatThoughtPopupItem(item)
+    if type(item) ~= "table" then
+        return ""
     end
 
-    parts[#parts + 1] = '</div>'
+    local parts = {}
+    local meta = "▸ " .. tostring(item.author or "匿名")
+    local likes = tonumber(item.likes_count) or 0
+    if likes > 0 then
+        meta = meta .. " · ♥ " .. tostring(likes)
+    end
+    parts[#parts + 1] = meta
+    parts[#parts + 1] = tostring(item.content or "")
     return table.concat(parts, "\n")
 end
 

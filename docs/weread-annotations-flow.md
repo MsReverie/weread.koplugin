@@ -1,12 +1,12 @@
-# 划线与想法：下载 → 嵌入 → 展示完整链路
+# 划线与想法：下载 → SQLite → 原生弹框完整链路
 
 本文说明「点击书籍正文里的划线，弹出该处的划线与想法」这一功能的端到端实现原理。
 
 ## 一句话原理
 
-**下载时**把微信读书的划线 / 想法转换成 **EPUB 标准脚注结构**（`epub:type="noteref"` 引用链接 + `epub:type="footnote"` 脚注块）直接烧进 EPUB，想法脚注块用 CSS 隐藏；**阅读时**抢在 KOReader 内建脚注弹窗之前拦截点击，从被点节点提取那段隐藏的脚注 HTML，用自定义浮层渲染出来。
+**下载时**把划线链接写入 EPUB，并把想法按 `chapter_uid + range + item_index` 存入本书的 `thoughts.db`；**阅读时**拦截划线链接，只查询被点击 range 的几条记录，再用 KOReader 原生 `TextViewer` 展示。
 
-核心巧思：**复用 EPUB 原生的 noteref / footnote 机制**承载数据（链接、定位由 CREngine 免费提供），但用 **CSS 隐藏 + 拦截点击 + 自定义浮层**接管展示，从而绕开 KOReader 内建脚注弹窗，并实现划线高亮、字体跟随、显隐开关等原生做不到的效果。展示阶段**完全离线**，不联网。
+展示阶段完全离线，不读取整章想法、不解析整章 JSON，也不启动 HTML/MuPDF 渲染器。
 
 ## 数据流总览
 
@@ -16,14 +16,13 @@
   /book/readreviews  → 想法 reviews[]       ┘
         │ (下载时)
         ▼  Annotations.process
-  原始章节 HTML ──► <a noteref href="#thought_UID_RANGE"><span wr-underline>划线</span>*</a>
-                   <aside footnote id="thought_UID_RANGE" class="weread-thought">想法…</aside>  (display:none)
-        │  save_book_epub
+  原始章节 HTML ──► <a href="#wrthought-BOOK-UID-RANGE"><span wr-underline>划线</span>*</a>
+        │                         想法 ──► thoughts.db / review_items
         ▼
-   EPUB 文件（划线 + 想法已内嵌）
+   EPUB 文件（划线链接） + SQLite（想法正文）
         │ (阅读时，离线)
-        ▼  点击 → 拦截 tap_link → getHTMLFromXPointer 提取隐藏 aside
-   ThoughtPopup 底部浮层渲染想法
+        ▼  点击 → 拦截 tap_link → SQLite 索引查询一个 range
+   KOReader 原生 TextViewer（上一页 / 关闭 / 下一页）
 ```
 
 ## 阶段一：下载（Download）
@@ -44,19 +43,17 @@
 - 把 HTML 拆成 rune 数组（range 是字符索引，不是字节索引）；range 是 0 索引（JS 惯例）→ +1 转 Lua 1 索引。
 - `snapStartToSafeBoundary` / `snapEndToSafeBoundary`：把区间端点从 HTML 标签 / 实体内部挪出来，避免切坏标签。
 - `wrapTextSegments`：区间内的**文本段**逐段用 `<span class="wr-underline">` 包裹，遇标签自动断开重开（不跨标签边界）。
-- **若这条 range 有想法**：在最后一个下划线 span 末尾加 `<span class="wr-star">*</span>`（灰色星号上标），并把每个下划线 span 用 `<a epub:type="noteref" class="wr-thought-link" href="#thought_<chapterUid>_<range>">` 包起来 —— 即 EPUB 标准脚注引用链接（逐 span 包裹是为了避免块级边界导致 MuPDF 截断链接）。
+- **若这条 range 有想法**：在最后一个下划线 span 末尾加 `<span class="wr-star">*</span>`（灰色星号上标），并把每个下划线 span 用普通内部链接 `<a class="wr-thought-link" href="#wrthought-BOOK-UID-RANGE">` 包起来（不使用 `epub:type="noteref"`，避免进入 KOReader 内建脚注路径）。
 
-### b) 生成脚注块 `buildThoughtAsides`
+### b) 写入 SQLite
 
-把想法内容拼成 `<aside epub:type="footnote" id="thought_<uid>_<range>" class="footnote weread-thought">`（含引用原文、作者 + 点赞、正文），注入到 `</body>` 之前。
+`ThoughtDB.putReviews` 在同一事务中写入 `review_items`。每条想法保存引用原文、作者、正文和点赞数，主键为 `(chapter_uid, range, item_index)`。
 
 ### CSS（`Annotations.UNDERLINE_CSS` / `THOUGHT_CSS`）
 
 - `.wr-underline`：橙色虚线下划线。
 - `.wr-star`：灰色小星号上标。
-- **`.weread-thought{display:none}`**：想法脚注块在正文里**隐藏**，正常阅读看不到。
-
-处理后的 HTML + 注释 CSS 经 `Thoughts.merge_css` 合并，最终由 `Content.save_book_epub` 打包。想法同时另存一份 `thoughts/<chapter_uid>.json` 缓存（`Thoughts.save_cache`）。**至此，划线和想法已固化在 EPUB 文件内。**
+处理后的 HTML + 注释 CSS 经 `Thoughts.merge_css` 合并，最终由 `Content.save_book_epub` 打包；想法正文保存在书籍目录的 `thoughts.db`。
 
 ## 阶段三：阅读时展示（Display）
 
@@ -64,23 +61,30 @@
 
 - 检测是 WeRead 书 → `_setupThoughtInterception`：注册一个**覆盖全屏的 tap 手势区**，`overrides = {"tap_link"}` —— **抢在 KOReader 内建的脚注弹窗（tap_link）之前**接管点击。
 - `applyAnnotationVisibility`：按 `show_annotations` 开关，决定是否往排版样式表追加隐藏注释的 CSS —— 这就是「显示 / 隐藏划线」开关的实现。
-- **预热** `ThoughtPopup.prewarm`（`ui/thought_popup.lua`）：用占位 HTML 提前创建一次渲染 widget，把 MuPDF 引擎 / 字体 / CSS 缓存热起来，让首次点击不卡。
 
 ### 点击划线 `_onThoughtTap`（`main.lua`）
 
-1. `self.ui.link:getLinkFromGes(ges)` 拿到点击处链接 —— 因为划线被 `<a href="#thought_...">` 包裹，KOReader 把它当作 link，返回 `link.xpointer`（指向目标 aside 节点）。
-2. `getHTMLFromXPointer(link.xpointer, 0x1001, false)` 提取**那一个 aside 节点**的 HTML。第三参数 `false` 很关键：不扩展到父节点，否则会把整个 footnotes section（上百条脚注）全拉出来，MuPDF 会卡死。结果按 `xpointer` 缓存。
-3. 校验提取的 HTML 含 `weread-thought` 标记。
-4. 若 `show_annotations == false`：只 `return true` **吃掉这次点击**（阻止内建脚注弹窗弹出），但不显示自己的浮层。
-5. 否则 `return true` 消费点击，`nextTick` 里调 `_showThoughtPopup`。
+1. `self.ui.link:getLinkFromGes(ges)` 拿到点击处链接。划线由 `<a href="#wrthought-...">` 包裹，因此 KOReader 能直接命中该链接。
+2. 从链接解析 `book_id / chapter_uid / range`。
+3. 用覆盖索引只查询 `review_items` 中该 range 的记录；结果按 href 做会话内缓存。
+4. 若 `show_annotations == false`，让点击继续作为普通翻页手势处理；否则消费点击，并在 `nextTick` 里显示原生弹框。
 
-### 渲染浮层 `_showThoughtPopup` → `ThoughtPopup.show`
+### 旧缓存自动修复
+
+如果 EPUB 中已有划线链接，但 `review_items` 查不到对应记录，说明书籍可能来自早期 HTML/单章 JSON 缓存。点击拦截同时识别旧版 `#thought_CHAPTER_START_END` 和新版 `#wrthought-BOOK-CHAPTER-START-END`：
+
+- 当前打开的是单章 EPUB：自动重新下载该章全部划线想法并写入 SQLite。
+- 当前打开的是合并全文 EPUB：按章节分批重新下载全书想法并重建 `thoughts.db`。
+
+修复沿用每批 5 个 range、批次间隔和失败重试，并提供取消按钮；完成后若用户仍停留在原页，会自动打开刚才点击的想法。
+
+### 原生弹框 `_showThoughtPopup` → `ThoughtPopup.show`
 
 - 先 `highlightXPointer` 高亮被点的划线原文。
-- 把提取的 aside HTML 交给 `ScrollHtmlWidget`（内部 MuPDF/CRE 渲染 xhtml 片段），渲成**底部浮层**（默认屏高 35%，按内容自适应）。
-- 浮层自带 CSS 把 `.weread-thought` 重新设为**可见**（浮层是独立文档，不继承正文那条隐藏 CSS），并配字体 fallback 链（书籍字体 → Noto Sans → emoji）。
-- **单例池** `_pooled_popup`：第二次点击直接 `_reopen` 换内容重排，不重建 widget，更快。
-- 点空白 / 左右下滑关闭；关闭时清掉原文高亮。
+- 使用 KOReader 原生文字布局按可见高度动态合并 `pageReview`：短想法一页可显示多条，长想法自动减少；单条超过弹框高度时可在页内滚动。标题栏只显示划线原文，并由原生 TitleBar 在实际右边界截断。
+- 内容由 KOReader 原生 `TextViewer` / `TextBoxWidget` 排版；底部提供“上一页 / 当前已显示条数÷总条数 / 下一页”（例如 `3/21`），关闭使用标题栏右上角 X。
+- 不创建 HTML 文档、不解析 CSS、不加载书籍字体，也不初始化 MuPDF。
+- 关闭时清掉原文高亮。
 
 ### 防错机制 `_reader_session_gen`
 
@@ -92,7 +96,8 @@
 |------|------|
 | `lib/downloader.lua` | 下载状态机，逐章调用划线/想法抓取与嵌入 |
 | `lib/client.lua` | gateway API：`/book/underlines`、`/book/readreviews`，range 分批 |
-| `lib/thoughts.lua` | 下载编排、想法 JSON 缓存、CSS 合并 |
-| `lib/annotations.lua` | 核心：把划线/想法注入 HTML（下划线 span + noteref 链接 + footnote aside） |
-| `ui/thought_popup.lua` | 展示：ScrollHtmlWidget 底部浮层、字体预热、单例复用 |
-| `main.lua` | tap 拦截、xpointer 提取、显隐开关、会话防错 |
+| `lib/thoughts.lua` | 下载编排、SQLite 写入、CSS 合并 |
+| `lib/thought_db.lua` | SQLite schema、事务写入、按 range 索引查询 |
+| `lib/annotations.lua` | 注入下划线与普通内部链接，并规范化原生弹框字段 |
+| `ui/thought_popup.lua` | 展示：原生 TextViewer、上一页/下一页导航 |
+| `main.lua` | tap 拦截、SQLite 查询、显隐开关、会话防错 |
