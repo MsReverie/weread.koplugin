@@ -23,8 +23,8 @@ local defaults = {
     books = {},
     downloads = {},
     sync = {
-        pull_on_open = true,
-        upload_on_close = true,
+        pull_on_open = false,
+        upload_on_close = false,
         ask_on_conflict = true,
         upload_interval_minutes = 0,
     },

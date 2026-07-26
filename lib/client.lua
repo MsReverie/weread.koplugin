@@ -413,6 +413,17 @@ function Client:get_progress(book_id)
     return self:gateway("/book/getprogress", { bookId = book_id })
 end
 
+function Client:get_web_progress(book_id)
+    local url = "https://weread.qq.com/web/book/getProgress?bookId="
+        .. WeRead.urlencode(book_id)
+        .. "&_=" .. tostring(os.time() * 1000)
+    local text = self:get_text(url, {
+        accept = "application/json, text/plain, */*",
+        referer = WeRead.reader_url(book_id),
+    })
+    return self:json_decode(text)
+end
+
 -- Reading statistics detail.
 -- mode: "weekly" | "monthly" | "annually" | "overall"
 -- base_time: optional Unix timestamp; server normalizes it to the period start

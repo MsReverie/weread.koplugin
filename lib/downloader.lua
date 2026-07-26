@@ -112,6 +112,17 @@ function Downloader:_releaseStandby(dl)
     end
 end
 
+function Downloader:_notifyCompletion(dl, ok, value)
+    if not dl or dl.completion_notified then return end
+    dl.completion_notified = true
+    if type(dl.on_complete) ~= "function" then return end
+    local called, err = pcall(dl.on_complete, ok == true, value)
+    if not called then
+        logger.warn(LOG_MODULE, "download completion callback failed:",
+            log_error(err))
+    end
+end
+
 -- Schedule any download step behind xpcall so an uncaught error always releases
 -- the standby guard, closes the progress dialog, and reports the failure.
 function Downloader:_scheduleGuarded(dl, step_fn, delay)
@@ -124,6 +135,7 @@ function Downloader:_scheduleGuarded(dl, step_fn, delay)
                 dl.progress_dialog = nil
             end
             logger.err(LOG_MODULE, "download step failed:", log_error(err))
+            self:_notifyCompletion(dl, false, err)
             self.show_info(T(_("Download failed:\n%1"), display_error(err)))
         end
     end)
@@ -133,15 +145,21 @@ end
 function Downloader:start(book, chapters, suffix, options)
     options = options or {}
     if not self.require_login(true, false) then
-        return
+        if type(options.on_complete) == "function" then
+            pcall(options.on_complete, false, "authentication_required")
+        end
+        return false
     end
     local task_label = options.single_chapter and _("Download chapter and read") or _("Download full book")
-    self.run_online_task(task_label, function()
+    local started = self.run_online_task(task_label, function()
         local ok_init, err_init = pcall(function()
             Content.ensure_reader_state(self.client, book)
         end)
         if not ok_init then
             logger.err(LOG_MODULE, "initialize book download failed:", log_error(err_init))
+            if type(options.on_complete) == "function" then
+                pcall(options.on_complete, false, err_init)
+            end
             self.show_info(T(_("Download failed:\n%1"), display_error(err_init)))
             return
         end
@@ -162,6 +180,8 @@ function Downloader:start(book, chapters, suffix, options)
             failed = {},
             annotation_failed_batches = 0,
             single_chapter = options.single_chapter == true,
+            open_on_complete = options.open_on_complete == true,
+            on_complete = options.on_complete,
             started_at = time.now(),
             standby_guard = true,
         }
@@ -188,6 +208,10 @@ function Downloader:start(book, chapters, suffix, options)
 
         self:_scheduleGuarded(dl, function() self:_step(dl) end)
     end)
+    if started == false and type(options.on_complete) == "function" then
+        pcall(options.on_complete, false, "offline")
+    end
+    return started ~= false
 end
 
 function Downloader:_setStage(dl, title, progress)
@@ -382,6 +406,7 @@ end
 function Downloader:_step(dl)
     if dl.cancelled then
         self:_releaseStandby(dl)
+        self:_notifyCompletion(dl, false, "cancelled")
         self.show_transient(_("Download cancelled"), 2)
         return
     end
@@ -394,6 +419,7 @@ function Downloader:_step(dl)
             end
             self:_releaseStandby(dl)
             logger.err(LOG_MODULE, "book download failed: no chapters downloaded")
+            self:_notifyCompletion(dl, false, "no_chapters_downloaded")
             self.show_info(_("No chapters were downloaded."))
             return
         end
@@ -442,6 +468,7 @@ function Downloader:_step(dl)
         self.refresh_shelf()
         if not ok then
             logger.err(LOG_MODULE, "save downloaded book failed:", log_error(path))
+            self:_notifyCompletion(dl, false, path)
             self.show_info(T(_("Download failed:\n%1"), display_error(path)))
             return
         end
@@ -474,6 +501,12 @@ function Downloader:_step(dl)
             "success_chapters=", tostring(#dl.selected),
             "failed_chapters=", tostring(#dl.failed),
             "failed_thought_batches=", tostring(dl.annotation_failed_batches))
+        if dl.open_on_complete then
+            self.open_file(path)
+            self:_notifyCompletion(dl, true, path)
+            return
+        end
+        self:_notifyCompletion(dl, true, path)
         UIManager:show(ConfirmBox:new{
             text = completion_text,
             ok_text = _("Read now"),

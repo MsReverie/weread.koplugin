@@ -215,32 +215,49 @@ function WeRead.make_content_params(book_id, chapter_uid, psvts, opts)
     return params
 end
 
-function WeRead.make_read_payload(opts)
+local function read_position_payload(opts)
     local now = opts.now or os.time()
-    local ts = opts.ts or (now * 1000 + math.random(0, 999))
-    local rn = opts.rn or math.random(0, 999)
-    local token = opts.token or WeRead.DEFAULT_READER_TOKEN
     local pc = opts.pclts or opts.pc
     if pc == nil or pc == "" or tonumber(pc) == 0 then
         pc = WeRead.e(now)
     end
-
-    local params = {
+    local progress = math.floor(tonumber(opts.progress) or 0)
+    progress = math.max(0, math.min(100, progress))
+    return {
         appId = opts.app_id or WeRead.web_app_id(opts.user_agent),
         b = WeRead.e(opts.book_id),
         c = WeRead.e(opts.chapter_uid or 0),
-        ci = opts.chapter_idx or 0,
-        co = opts.chapter_offset or 0,
+        ci = math.floor(tonumber(opts.chapter_idx) or 0),
+        co = math.max(0, math.floor(tonumber(opts.chapter_offset) or 0)),
         sm = WeRead.utf8_substr(opts.summary, 20),
-        pr = opts.progress or 0,
-        rt = opts.elapsed_seconds or 0,
-        ts = ts,
-        rn = rn,
-        sg = Crypto.sha256_hex(tostring(ts) .. tostring(rn) .. token),
+        pr = progress,
         ct = now,
         ps = opts.psvts or opts.ps or "",
         pc = pc,
     }
+end
+
+function WeRead.make_enter_read_payload(opts)
+    opts = opts or {}
+    local params = read_position_payload(opts)
+    params.s = WeRead.sign(WeRead.sorted_query(params))
+    return params
+end
+
+function WeRead.make_read_payload(opts)
+    opts = opts or {}
+    local params = read_position_payload(opts)
+    local now = params.ct
+    local ts = opts.ts or (now * 1000 + math.random(0, 999))
+    local rn = opts.rn or math.random(0, 999)
+    local token = opts.token
+    if token == nil or token == "" then
+        token = WeRead.DEFAULT_READER_TOKEN
+    end
+    params.rt = math.max(0, math.floor(tonumber(opts.elapsed_seconds) or 0))
+    params.ts = ts
+    params.rn = rn
+    params.sg = Crypto.sha256_hex(tostring(ts) .. tostring(rn) .. token)
     params.s = WeRead.sign(WeRead.sorted_query(params))
     return params
 end

@@ -21,11 +21,14 @@ lib/cookie.lua          Cookie header parsing and merging
 lib/crypto.lua          SHA-256, MD5 (pure Lua)
 lib/downloader.lua      Book/chapter download engine (state machine + standby guard)
 lib/i18n.lua            Chinese translations (zh table, _() wrapper)
+lib/position_mapper.lua Pure KOReader ↔ WeRead chapter/offset mapping
+lib/progress_sync.lua   Automatic progress-sync state machine and safety gate
 lib/read_report.lua     Reading-report state machine, context refresh, retries
 lib/reader_state.lua    Web Reader session and position extraction
 lib/settings.lua        Settings persistence via KOReader LuaSettings
 lib/weread.lua          WeRead protocol utilities (encoding, signing, URL helpers)
 ui/download_dialog.lua  Custom download progress dialog with cancel button
+ui/progress_sync_dialog.lua Progress conflict and sync-result dialogs
 ui/thought_popup.lua    Native underline/thought TextViewer with previous/next paging
 ```
 
@@ -121,7 +124,6 @@ rg -n "wrk-|wr_skey[=]|wr_rt[=]|wr_vid[=]|ptcz[=]|x-wrpa|thirdwx" -S .
 ## Unimplemented Features (WIP)
 
 These are placeholder menu items shown when a WeRead book is open, currently greyed out:
-- Sync progress now — bidirectional progress sync with KOReader location mapping
 - Book details — current-book WeRead metadata display
 - Notes — read-only WeRead highlights/thoughts
 
@@ -130,3 +132,4 @@ These are placeholder menu items shown when a WeRead book is open, currently gre
 - `docs/weread-api-reference.md` — full API endpoint reference (gateway + Web)
 - `docs/weread-content-research.md` — content decoding and image packaging research
 - `docs/weread-annotations-flow.md` — underline/thought download → embed → tap-to-display flow
+- `docs/weread-progress-sync-plan.md` — progress protocol research, mapping, and safety design

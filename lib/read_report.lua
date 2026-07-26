@@ -27,7 +27,7 @@ local JOB_COLLECT_INTERVAL_SECONDS = 2
 local CONTEXT_FIELDS = {
     "title", "reader_url", "app_id", "psvts", "pclts", "token",
     "chapter_uid", "chapter_idx", "chapter_offset", "progress", "summary",
-    "read_context_updated_at",
+    "read_context_updated_at", "read_session_entered_at", "read_session_id",
 }
 
 local ReadReport = {}
@@ -181,8 +181,10 @@ function ReadReport:new(options)
         scheduler = options.scheduler,
         get_document = options.get_document,
         detect_book = options.detect_book,
+        position_provider = options.position_provider,
         is_online = options.is_online or function() return true end,
         now = options.now or os.time,
+        session_id = tostring({}) .. ":" .. tostring((options.now or os.time)()),
         subprocess = options.subprocess or make_subprocess_runner(),
         state = "stopped",
         generation = 0,
@@ -410,7 +412,7 @@ end
 
 function ReadReport:_tick(generation, task)
     local ok, err = pcall(function()
-        local proceed, book_id = self:_precheck()
+        local proceed, book_id, position = self:_precheck()
         if not proceed then
             self:_schedule_next(generation, task)
             return
@@ -422,7 +424,8 @@ function ReadReport:_tick(generation, task)
             return
         end
         local allow_renewal = self:_renewal_allowed()
-        local spawned, spawn_err = self:_start_job(book_id, allow_renewal, generation, task)
+        local spawned, spawn_err = self:_start_job(
+            book_id, allow_renewal, generation, task, position)
         if spawned then
             return
         end
@@ -431,7 +434,10 @@ function ReadReport:_tick(generation, task)
                 tostring(spawn_err))
             self.logged_inline_fallback = true
         end
-        local outcome = self:_run_pipeline(book_id, { allow_renewal = allow_renewal })
+        local outcome = self:_run_pipeline(book_id, {
+            allow_renewal = allow_renewal,
+            position = position,
+        })
         self:_apply_outcome(outcome)
         self:_schedule_next(generation, task)
     end)
@@ -477,7 +483,17 @@ function ReadReport:_precheck()
         self:_log_skip("offline")
         return false
     end
-    return true, book_id
+    local position
+    if type(self.position_provider) == "function" then
+        local provided, reason, applies = self.position_provider(book_id)
+        if applies and not provided then
+            self.state = "waiting_for_progress"
+            self:_log_skip(reason or "progress_unverified")
+            return false
+        end
+        position = provided
+    end
+    return true, book_id, position
 end
 
 function ReadReport:_renewal_allowed()
@@ -513,13 +529,13 @@ end
 -- Subprocess job management (parent side)
 -- ------------------------------------------------------------------
 
-function ReadReport:_start_job(book_id, allow_renewal, generation, task)
+function ReadReport:_start_job(book_id, allow_renewal, generation, task, position)
     local runner = self.subprocess
     if not runner then
         return false, "no subprocess support"
     end
     local pid, read_fd = runner.run(function(_pid, child_write_fd)
-        local outcome = self:_child_report(book_id, allow_renewal)
+        local outcome = self:_child_report(book_id, allow_renewal, position)
         local ok, encoded = pcall(function()
             return self.client:json_encode(outcome)
         end)
@@ -738,7 +754,7 @@ end
 -- Child entry point. Neuters settings persistence inside the fork and
 -- captures auth changes (Set-Cookie merges, cookie renewal) so the parent
 -- can persist them from the outcome.
-function ReadReport:_child_report(book_id, allow_renewal)
+function ReadReport:_child_report(book_id, allow_renewal, position)
     self._no_persist = true
     self.settings.flush = function() end
     local auth_changed = false
@@ -751,7 +767,10 @@ function ReadReport:_child_report(book_id, allow_renewal)
     end
 
     local ok, outcome = pcall(function()
-        return self:_run_pipeline(book_id, { allow_renewal = allow_renewal })
+        return self:_run_pipeline(book_id, {
+            allow_renewal = allow_renewal,
+            position = position,
+        })
     end)
     if not ok then
         outcome = {
@@ -787,11 +806,11 @@ function ReadReport:_run_pipeline(book_id, opts)
         outcome.error_prefix = "read report context initialization failed:"
         return outcome
     end
-    outcome.book = self:_context_snapshot(book)
-
     local ok, result, http_code = pcall(function()
-        return self:_send(book_id, book)
+        return self:_send(
+            book_id, book, opts.position, opts.elapsed_seconds)
     end)
+    outcome.book = self:_context_snapshot(book)
     local accepted, accepted_body = response_accepted(result, http_code)
     if ok and accepted then
         outcome.accepted = true
@@ -813,8 +832,10 @@ function ReadReport:_run_pipeline(book_id, opts)
     if refresh_ok then
         outcome.book = self:_context_snapshot(refreshed)
         local retry_ok, retry_result, retry_code = pcall(function()
-            return self:_send(book_id, refreshed)
+            return self:_send(
+                book_id, refreshed, opts.position, opts.elapsed_seconds)
         end)
+        outcome.book = self:_context_snapshot(refreshed)
         local retry_accepted, retry_body = response_accepted(retry_result, retry_code)
         if retry_ok and retry_accepted then
             outcome.accepted = true
@@ -860,8 +881,10 @@ function ReadReport:_run_pipeline(book_id, opts)
     end
     outcome.book = self:_context_snapshot(final_book)
     local final_ok, final_result, final_code = pcall(function()
-        return self:_send(book_id, final_book)
+        return self:_send(
+            book_id, final_book, opts.position, opts.elapsed_seconds)
     end)
+    outcome.book = self:_context_snapshot(final_book)
     local final_accepted, final_body = response_accepted(final_result, final_code)
     if final_ok and final_accepted then
         outcome.accepted = true
@@ -879,12 +902,13 @@ end
 
 -- Inline (blocking) report used when subprocess support is unavailable.
 function ReadReport:report_once()
-    local proceed, book_id = self:_precheck()
+    local proceed, book_id, position = self:_precheck()
     if not proceed then
         return false
     end
     local outcome = self:_run_pipeline(book_id, {
         allow_renewal = self:_renewal_allowed(),
+        position = position,
     })
     return self:_apply_outcome(outcome)
 end
@@ -928,11 +952,17 @@ function ReadReport:_build_context(book_id, force, book)
     local ready = tostring(book.psvts or "") ~= ""
         and book.chapter_uid ~= nil
         and type(book.chapters) == "table" and #book.chapters > 0
+        and book.read_session_id == self.session_id
     if not force and ready and age < CONTEXT_TTL_SECONDS then
         return book
     end
 
     Content.ensure_reader_state(self.client, book)
+    if book.pclts == nil or book.pclts == "" or tonumber(book.pclts) == 0 then
+        book.pclts = WeRead.e(self.now())
+    end
+    book.read_session_entered_at = nil
+    book.read_session_id = self.session_id
     if force or type(book.chapters) ~= "table" or #book.chapters == 0 then
         local chapters = Content.fetch_catalog(self.client, book)
         local cache_ok, cache_err = Content.save_catalog_cache(
@@ -989,8 +1019,21 @@ function ReadReport:ensure_context(book_id, force)
     return book
 end
 
-function ReadReport:build_payload(book_id, elapsed_seconds, book)
+local function apply_position(book, position)
+    if type(position) ~= "table" then return book end
+    book.chapter_uid = position.chapter_uid or book.chapter_uid
+    book.chapter_idx = tonumber(position.chapter_idx) or tonumber(book.chapter_idx) or 0
+    book.chapter_offset = tonumber(position.chapter_offset)
+        or tonumber(book.chapter_offset) or 0
+    book.progress = tonumber(position.percent or position.progress)
+        or tonumber(book.progress) or 0
+    book.summary = position.summary or book.summary or ""
+    return book
+end
+
+function ReadReport:build_payload(book_id, elapsed_seconds, book, position)
     book = book or self:ensure_context(book_id, false)
+    apply_position(book, position)
     return WeRead.make_read_payload{
         book_id = book_id,
         chapter_uid = book.chapter_uid,
@@ -1006,9 +1049,64 @@ function ReadReport:build_payload(book_id, elapsed_seconds, book)
     }
 end
 
-function ReadReport:_send(book_id, book)
-    local payload = self:build_payload(book_id, self:_interval(), book)
+function ReadReport:_send(book_id, book, position, elapsed_seconds)
+    apply_position(book, position)
+    if book.pclts == nil or book.pclts == "" or tonumber(book.pclts) == 0 then
+        book.pclts = WeRead.e(self.now())
+    end
+    if book.read_session_id ~= self.session_id then
+        book.read_session_id = self.session_id
+        book.read_session_entered_at = nil
+    end
+    if not book.read_session_entered_at then
+        local enter_payload = WeRead.make_enter_read_payload{
+            book_id = book_id,
+            chapter_uid = book.chapter_uid,
+            chapter_idx = tonumber(book.chapter_idx) or 0,
+            chapter_offset = tonumber(book.chapter_offset) or 0,
+            progress = tonumber(book.progress) or 0,
+            summary = book.summary or "",
+            app_id = book.app_id or WeRead.web_app_id(),
+            psvts = book.psvts,
+            pclts = book.pclts,
+        }
+        self.client:report_read(
+            enter_payload,
+            book.reader_url or WeRead.reader_url(book_id)
+        )
+        book.read_session_entered_at = self.now()
+        book.read_session_id = self.session_id
+    end
+    local payload = self:build_payload(
+        book_id,
+        elapsed_seconds == nil and self:_interval() or elapsed_seconds,
+        book,
+        position
+    )
     return self.client:report_read(payload, book.reader_url or WeRead.reader_url(book_id))
+end
+
+function ReadReport:upload_position(book_id, position, elapsed_seconds)
+    if self.job then
+        return false, { error = "read_report_busy", error_kind = "busy" }
+    end
+    local outcome = self:_run_pipeline(tostring(book_id), {
+        allow_renewal = self:_renewal_allowed(),
+        position = position,
+        elapsed_seconds = elapsed_seconds or 0,
+    })
+    if outcome.renew_attempted then
+        self.last_renew_attempt = self.now()
+    end
+    if type(outcome.book) == "table" then
+        local ok, err = pcall(function()
+            self:_persist_context(tostring(book_id), outcome.book)
+        end)
+        if not ok then
+            log("warn", "persist progress upload context failed:", tostring(err))
+        end
+    end
+    return outcome.accepted == true, outcome
 end
 
 return ReadReport

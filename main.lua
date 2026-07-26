@@ -26,6 +26,8 @@ local QRLogin = require("lib.qr_login")
 local ReadReport = require("lib.read_report")
 local ReadStats = require("lib.read_stats")
 local ReadStatsView = require("ui.read_stats_view")
+local ProgressSync = require("lib.progress_sync")
+local ProgressSyncDialog = require("ui.progress_sync_dialog")
 local Settings = require("lib.settings")
 local WeRead = require("lib.weread")
 local ThoughtPopup = require("ui.thought_popup")
@@ -98,7 +100,9 @@ function WeReadPlugin:init()
         open_file       = function(path) self:openFile(path) end,
         safe_callback   = function(label, fn) return self:safeCallback(label, fn) end,
         require_login   = function(cookie, api_key) return self:requireLogin(cookie, api_key) end,
-        run_online_task = function(label, fn) self:runOnlineTask(label, fn) end,
+        run_online_task = function(label, fn)
+            return self:runOnlineTask(label, fn)
+        end,
     }
     self:migrateLegacyBookData()
     self.qr_login = QRLogin:new(self, self.client, self.settings)
@@ -112,10 +116,73 @@ function WeReadPlugin:init()
         detect_book = function()
             return self:detectWeReadBook()
         end,
+        position_provider = function(book_id)
+            if not self.progress_sync then
+                return nil, "progress_sync_initializing", true
+            end
+            return self.progress_sync:position_for_report(book_id)
+        end,
         -- The report tick runs on the UI loop; use the link-state check here
         -- because NetworkMgr:isOnline() does a blocking DNS lookup.
         is_online = function()
             return self:isNetworkConnected()
+        end,
+    }
+    self.progress_sync = ProgressSync:new{
+        settings = self.settings,
+        client = self.client,
+        scheduler = UIManager,
+        get_document = function()
+            return self.ui and self.ui.document
+        end,
+        get_footer = function()
+            return self.ui and self.ui.view and self.ui.view.footer
+        end,
+        detect_book = function()
+            return self:detectWeReadBook()
+        end,
+        get_book = function(book_id)
+            return self.settings:get("books", {})[tostring(book_id)]
+        end,
+        get_chapters = function(book)
+            return self:ensureChaptersLoaded(book)
+        end,
+        get_file_context = function(book, path)
+            return self:getChapterInfoFromFile(book, path)
+        end,
+        run_online = function(_kind, callback)
+            return self:runOnlineTask(_("Sync progress"), callback)
+        end,
+        upload_position = function(book_id, position, elapsed_seconds)
+            return self.read_report:upload_position(
+                book_id, position, elapsed_seconds)
+        end,
+        goto_fraction = function(fraction)
+            local percent = math.floor(
+                math.max(0, math.min(1, tonumber(fraction) or 0))
+                    * 100 + 0.5)
+            return pcall(function()
+                if self.ui and self.ui.rolling
+                    and self.ui.rolling.onGotoPercent then
+                    self.ui.rolling:onGotoPercent(percent)
+                elseif self.ui then
+                    self.ui:handleEvent(Event:new("GotoPercent", percent))
+                else
+                    error("reader unavailable")
+                end
+            end)
+        end,
+        open_chapter = function(book, chapter)
+            return self:openProgressTargetChapter(book, chapter)
+        end,
+        is_online = function()
+            return self:isNetworkConnected()
+        end,
+        on_choice = function(context)
+            ProgressSyncDialog.show_choice(context)
+        end,
+        notify = function(code, data)
+            ProgressSyncDialog.notify(code, data)
         end,
     }
     self:onDispatcherRegisterActions()
@@ -271,8 +338,14 @@ function WeReadPlugin:getMainMenuItems()
 
     if self.ui.document then
         table.insert(items, 2, {
-            text = _("Sync progress now") .. "  (" .. _("WIP") .. ")",
-            enabled_func = function() return false end,
+            text = _("Sync progress now"),
+            enabled_func = function()
+                local book_id = self:detectWeReadBook()
+                return book_id ~= nil and not WeRead.is_mp_book(book_id)
+            end,
+            callback = self:safeCallback(_("Sync progress now"), function()
+                self:onWeReadSyncProgress()
+            end),
         })
         table.insert(items, 3, {
             text = _("Book details"),
@@ -346,17 +419,40 @@ function WeReadPlugin:getSettingsMenuItems()
                 return {
                     {
                         text = _("Pull progress on open"),
-                        enabled_func = function() return false end,
+                        keep_menu_open = true,
+                        check_callback_updates_menu = true,
                         checked_func = function()
-                            return self.settings:get("sync").pull_on_open
+                            return self.settings:get("sync").pull_on_open == true
                         end,
-                    },
+                        callback = self:safeCallback(_("Pull progress on open"),
+                            function(touchmenu_instance)
+                                local sync = self.settings:get("sync")
+                                sync.pull_on_open = not (sync.pull_on_open == true)
+                                self.settings:set("sync", sync)
+                                self.settings:flush()
+                                if touchmenu_instance then
+                                    touchmenu_instance:updateItems()
+                                end
+                            end),
+                     },
                     {
                         text = _("Upload progress on close"),
-                        enabled_func = function() return false end,
+                        keep_menu_open = true,
+                        check_callback_updates_menu = true,
                         checked_func = function()
-                            return self.settings:get("sync").upload_on_close
+                            return self.settings:get("sync").upload_on_close == true
                         end,
+                        callback = self:safeCallback(_("Upload progress on close"),
+                            function(touchmenu_instance)
+                                local sync = self.settings:get("sync")
+                                sync.upload_on_close =
+                                    not (sync.upload_on_close == true)
+                                self.settings:set("sync", sync)
+                                self.settings:flush()
+                                if touchmenu_instance then
+                                    touchmenu_instance:updateItems()
+                                end
+                            end),
                     },
                 }
             end,
@@ -2276,6 +2372,55 @@ function WeReadPlugin:openChapter(book, chapter)
     end
 end
 
+-- Open a chapter selected by cloud-progress resolution. Unlike ordinary
+-- chapter navigation, a missing target must be confirmed explicitly and then
+-- opened automatically so ProgressSync can apply its pending in-chapter jump
+-- in the next onReaderReady event.
+function WeReadPlugin:openProgressTargetChapter(book, chapter)
+    if type(book) ~= "table" or type(chapter) ~= "table" then
+        return false, "target_chapter_unavailable"
+    end
+    local chapter_uid = chapter.chapterUid or chapter.chapterId
+    local cached = chapter_uid and book.cached_chapters
+        and book.cached_chapters[tostring(chapter_uid)]
+    if cached and file_exists(cached) then
+        self:openFile(cached)
+        return true
+    end
+
+    local title = chapter.title
+        or T(_("Chapter %1"), tostring(chapter_uid or ""))
+    local confirm
+    confirm = ConfirmBox:new{
+        text = T(_(
+            "Cloud progress is in \"%1\", but this chapter has not been downloaded.\n\n"
+            .. "Download and open it now?"
+        ), title),
+        ok_text = _("Download target chapter"),
+        ok_callback = self:safeCallback(_("Download target chapter"), function()
+            UIManager:close(confirm)
+            self.downloader:start(book, { chapter }, "chapter", {
+                single_chapter = true,
+                open_on_complete = true,
+                on_complete = function(ok, reason)
+                    if not ok and self.progress_sync then
+                        self.progress_sync:cancel_pending_jump(reason)
+                    end
+                end,
+            })
+        end),
+        cancel_text = _("Cancel"),
+        cancel_callback = function()
+            if self.progress_sync then
+                self.progress_sync:cancel_pending_jump(
+                    "target_chapter_download_cancelled")
+            end
+        end,
+    }
+    UIManager:show(confirm)
+    return true
+end
+
 function WeReadPlugin:downloadChapterAndRead(book, chapter)
     self:confirmAndDownloadChapters(book, { chapter }, "chapter", {
         single_chapter = true,
@@ -2481,41 +2626,7 @@ function WeReadPlugin:onWeReadSyncProgress()
     if not self:requireLogin(true, false) then
         return
     end
-    local books = self.settings:get("books", {})
-    local book_id, book
-    for id, item in pairs(books) do
-        book_id, book = id, item
-        break
-    end
-    if not book_id then
-        self:showInfo(_("Parse a WeRead reader URL before testing progress sync."))
-        return
-    end
-    local payload = WeRead.make_read_payload{
-        book_id = book_id,
-        chapter_uid = book.chapter_uid or 0,
-        chapter_idx = book.chapter_idx or 0,
-        chapter_offset = book.chapter_offset or 0,
-        progress = book.progress or 0,
-        summary = book.summary or "",
-        app_id = book.app_id,
-        psvts = book.psvts,
-        pclts = book.pclts,
-        token = book.token,
-    }
-    UIManager:show(ConfirmBox:new{
-        text = T(_("Upload local progress to WeRead?\n\nBook: %1\nProgress: %2%%\nChapter offset: %3"), book.title or book_id, tostring(payload.pr), tostring(payload.co)),
-        ok_text = _("Upload"),
-        ok_callback = self:safeCallback(_("Upload"), function()
-            self:runNetworkAction(_("Sync progress"), function()
-                local result = self.client:report_read(payload, book.reader_url)
-                if result and result.succ then
-                    return _("WeRead progress synced.")
-                end
-                return _("Progress request sent, but response did not include succ=1.")
-            end)
-        end),
-    })
+    self.progress_sync:sync_now()
 end
 
 -- Runtime CSS that hides underlines and thought stars baked into cached EPUBs.
@@ -3449,6 +3560,7 @@ function WeReadPlugin:onReaderReady()
         end
     end
 
+    self.progress_sync:on_reader_ready()
     local _started, _title, reason = self.read_report:on_reader_ready()
     local rr = self.settings:get("read_report")
     if rr.enabled and rr.mode == "auto" and reason == "document_not_weread" then
@@ -3456,7 +3568,15 @@ function WeReadPlugin:onReaderReady()
     end
 end
 
+function WeReadPlugin:onPageUpdate()
+    self.progress_sync:on_page_update()
+end
+
 function WeReadPlugin:onCloseDocument()
+    -- Capture the immutable local position while the document is still alive.
+    -- The network upload is scheduled; stopping ReadReport below also frees any
+    -- in-flight report slot before that scheduled upload begins.
+    self.progress_sync:on_close_document()
     self._reader_session_gen = (self._reader_session_gen or 0) + 1
     self:_teardownThoughtInterception()
 
@@ -3477,10 +3597,12 @@ function WeReadPlugin:stopReadReport(reason)
 end
 
 function WeReadPlugin:onSuspend()
+    self.progress_sync:on_suspend()
     self.read_report:on_suspend()
 end
 
 function WeReadPlugin:onResume()
+    self.progress_sync:on_resume()
     self.read_report:on_resume()
 end
 
