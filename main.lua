@@ -9,12 +9,15 @@ local InputDialog = require("ui/widget/inputdialog")
 local logger = require("logger")
 local Menu = require("ui/widget/menu")
 local PathChooser = require("ui/widget/pathchooser")
+local TextViewer = require("ui/widget/textviewer")
 local time = require("ui/time")
 local UIManager = require("ui/uimanager")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local T = require("ffi/util").template
 
 local Annotations = require("lib.annotations")
+local BookReviews = require("lib.book_reviews")
+local BookReviewsView = require("ui.book_reviews_view")
 local Client = require("lib.client")
 local Content = require("lib.content")
 local Downloader = require("lib.downloader")
@@ -1920,6 +1923,7 @@ function WeReadPlugin:showBookRecord(book)
                 saved.newRatingCount = info.newRatingCount
                 saved.translator = info.translator
                 saved.categoryName = info.categoryName or info.category
+                saved.publishTime = info.publishTime
                 books[book_id] = saved
                 self.settings:set("books", books)
                 self.settings:flush()
@@ -1963,6 +1967,10 @@ function WeReadPlugin:showBookMenu(book)
         if book.publisher and book.publisher ~= "" then
             table.insert(items, { text = _("Publisher"), mandatory = book.publisher })
         end
+        local publish_date = BookReviews.format_date(book.publishTime)
+        if publish_date ~= "" then
+            table.insert(items, { text = _("Publication date"), mandatory = publish_date })
+        end
         if book.categoryName and book.categoryName ~= "" then
             table.insert(items, { text = _("Category"), mandatory = book.categoryName })
         end
@@ -1972,16 +1980,8 @@ function WeReadPlugin:showBookMenu(book)
                 or tostring(book.wordCount)
             table.insert(items, { text = _("Word count"), mandatory = wc })
         end
-        if book.newRating and book.newRating > 0 then
-            local score = string.format("%.1f", book.newRating / 100)
-            local count = book.newRatingCount and tostring(book.newRatingCount) or "0"
-            table.insert(items, { text = _("Rating"), mandatory = T(_("%1 (%2 ratings)"), score, count) })
-        end
         if book.isbn and book.isbn ~= "" then
             table.insert(items, { text = "ISBN", mandatory = book.isbn })
-        end
-        if book.progress and book.progress > 0 then
-            table.insert(items, { text = _("Reading progress"), mandatory = tostring(book.progress) .. "%" })
         end
         if book.intro and book.intro ~= "" then
             table.insert(items, {
@@ -1991,7 +1991,21 @@ function WeReadPlugin:showBookMenu(book)
                 end,
             })
         end
-
+        if book.newRating and book.newRating > 0 then
+            local score = string.format("%.1f", book.newRating / 100)
+            local count = book.newRatingCount and tostring(book.newRatingCount) or "0"
+            table.insert(items, { text = _("Rating"), mandatory = T(_("%1 (%2 ratings)"), score, count) })
+        end
+        table.insert(items, {
+            text = _("Book reviews"),
+            post_text = _("Recommended / Latest"),
+            callback = self:safeCallback(_("Book reviews"), function()
+                self:showBookReviews(book)
+            end),
+        })
+        if book.progress and book.progress > 0 then
+            table.insert(items, { text = _("Reading progress"), mandatory = tostring(book.progress) .. "%" })
+        end
         if #items > 0 then
             items[#items].separator = true
         end
@@ -2042,6 +2056,95 @@ function WeReadPlugin:showBookMenu(book)
     end
 
     menu = self:showList(book.title or _("Book details"), buildItems(), _("No actions."))
+end
+
+function WeReadPlugin:showBookReviewDetail(book, review, mode)
+    local author = review.author ~= "" and review.author or _("Anonymous")
+    local metadata = {}
+    if review.rating > 0 then
+        metadata[#metadata + 1] = T(
+            _("Score %1"), BookReviews.format_rating(review.rating)
+        )
+    end
+    local review_date = BookReviews.format_date(review.create_time)
+    if review_date ~= "" then
+        metadata[#metadata + 1] = review_date
+    end
+    if review.is_finish then
+        metadata[#metadata + 1] = _("Finished")
+    end
+
+    local text = {}
+    text[#text + 1] = "《" .. tostring(book.title or _("Untitled")) .. "》"
+    text[#text + 1] = author
+    if #metadata > 0 then
+        text[#text + 1] = table.concat(metadata, " · ")
+    end
+    text[#text + 1] = ""
+    text[#text + 1] = review.content ~= "" and review.content or _("No review content.")
+
+    UIManager:show(TextViewer:new{
+        title = mode == "latest" and _("Latest review") or _("Recommended review"),
+        text = table.concat(text, "\n"),
+        text_type = "general",
+        auto_para_direction = true,
+    })
+end
+
+function WeReadPlugin:showBookReviews(book)
+    if not self:requireLogin(false, true) then
+        return
+    end
+    local book_id = book.book_id or book.bookId
+    local session = {
+        cache = {},
+    }
+
+    local loadReviews
+    loadReviews = function(mode, old_view)
+        local function showResult(result)
+            if old_view then
+                UIManager:close(old_view)
+            end
+            local view
+            view = BookReviewsView.show({
+                book_title = book.title or _("Untitled"),
+                mode = mode,
+                result = result,
+            }, {
+                on_switch = function(new_mode)
+                    loadReviews(new_mode, view)
+                end,
+                on_select = function(review, selected_mode)
+                    self:showBookReviewDetail(book, review, selected_mode)
+                end,
+            })
+        end
+
+        if session.cache[mode] then
+            showResult(session.cache[mode])
+            return
+        end
+        self:showBusy(_("Loading book reviews..."))
+        self:runOnlineTask(_("Book reviews"), function()
+            local ok, result = pcall(function()
+                local list_type = mode == "latest" and 3 or 1
+                return BookReviews.normalize_list(
+                    self.client:get_book_reviews(book_id, list_type, 20)
+                )
+            end)
+            self:closeBusy()
+            if not ok then
+                logger.err(LOG_MODULE, "load book reviews failed:", log_error(result))
+                self:showInfo(T(_("%1 failed:\n%2"), _("Book reviews"), display_error(result)))
+                return
+            end
+            session.cache[mode] = result
+            showResult(result)
+        end)
+    end
+
+    loadReviews("recommended", nil)
 end
 
 function WeReadPlugin:showShelfTabs()
