@@ -44,6 +44,9 @@ jobs:
             python3 -m py_compile scripts/*.py
           fi
 
+      - name: Release package smoke test
+        run: bash scripts/package_release.sh /tmp/weread.koplugin-release-test.zip
+
       - name: Sensitive information scan
         run: |
           set -euo pipefail

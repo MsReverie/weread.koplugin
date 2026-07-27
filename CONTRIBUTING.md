@@ -147,6 +147,7 @@ bash scripts/run_lua_specs.sh
 bash scripts/check_lua_namespace.sh
 luacheck main.lua _meta.lua weread spec
 python3 -m py_compile scripts/*.py
+bash scripts/package_release.sh /tmp/weread.koplugin-release-test.zip
 rg -n -P "wrk-(?!x{8,})[A-Za-z0-9_-]{12,}|(wr_skey|wr_rt|wr_vid|ptcz)=((?!XXX)[^;[:space:]'\''\"]{8,})|x-wrpa-[0-9]+:\s*((?!\.\.\.)[A-Za-z0-9+/=_-]{12,})|thirdwx[=:]\s*[A-Za-z0-9_-]{8,}" . --glob '!cache/**' --glob '!*.epub'
 ```
 
@@ -157,6 +158,7 @@ bash scripts/run_lua_specs.sh
 bash scripts/check_lua_namespace.sh
 luacheck main.lua _meta.lua weread spec
 python3 -m py_compile scripts/*.py
+bash scripts/package_release.sh /tmp/weread.koplugin-release-test.zip
 rg -n -P "wrk-(?!x{8,})[A-Za-z0-9_-]{12,}|(wr_skey|wr_rt|wr_vid|ptcz)=((?!XXX)[^;[:space:]'\''\"]{8,})|x-wrpa-[0-9]+:\s*((?!\.\.\.)[A-Za-z0-9+/=_-]{12,})|thirdwx[=:]\s*[A-Za-z0-9_-]{8,}" . --glob '!cache/**' --glob '!*.epub'
 ```
 
@@ -165,3 +167,9 @@ coverage, and the pinned KOReader PluginLoader integration test.
 
 测试分层、回归测试要求和固定 KOReader 版本的 PluginLoader 集成测试说明，见
 [docs/testing.md](docs/testing.md)。
+
+Release packaging, manual artifacts, and automatic version-based publishing
+are documented in [docs/releasing.md](docs/releasing.md).
+
+发布包结构、手动打包和基于版本号的自动发布流程，见
+[docs/releasing.md](docs/releasing.md)。
