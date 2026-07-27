@@ -76,7 +76,7 @@ end
 
 local function merge_req_opts(default_opts, user_opts)
     default_opts = default_opts or {}
-    if not user_opts then 
+    if not user_opts then
         return deepcopy(default_opts)
     end
     local result = deepcopy(default_opts)
@@ -93,9 +93,9 @@ local function merge_req_opts(default_opts, user_opts)
                 result.headers[hk] = deepcopy(hv)
             end
         else
-            result[k] = deepcopy(v) 
+            result[k] = deepcopy(v)
         end
-    end 
+    end
     return result
 end
 
@@ -182,8 +182,8 @@ function Client:request(opts)
     if is_handle_cookie then
         local cookies = self.settings:get("cookies", {})
         local cookie_header = Cookie.to_header(cookies)
-        if cookie_header ~= "" then 
-            headers["Cookie"] = cookie_header 
+        if cookie_header ~= "" then
+            headers["Cookie"] = cookie_header
         end
     end
 
@@ -391,8 +391,8 @@ function Client:gateway(api_name, params)
     local payload = merge_req_opts({
         api_name = api_name,
         skill_version = (params and params.skill_version) or WeRead.SKILL_VERSION
-    }, params) 
-    
+    }, params)
+
     local api_key = self.settings:get("api_key", "")
     if api_key == "" then
         error("WeRead API key is not configured")
@@ -460,7 +460,7 @@ function Client:get_mp_articles(book_id, max_idx, count, wr_ticket)
     if wr_ticket and wr_ticket ~= "" then
         custom_headers["x-wr-ticket"] = wr_ticket
     end
-    
+
     local wrpa = self.settings:get("wr_wrpa", "")
     if wrpa ~= "" then
         custom_headers["x-wrpa-0"] = wrpa
@@ -485,7 +485,7 @@ end
 function Client:get_mp_content(review_id, opts)
     opts = opts or {}
     local url = "https://weread.qq.com/web/mp/content?reviewId=" .. WeRead.urlencode(review_id)
-    
+
     local custom_headers = {
         ["Accept"] = "text/html,application/xhtml+xml,*/*",
         ["Referer"] = opts.referer or "https://weread.qq.com/",
@@ -493,7 +493,7 @@ function Client:get_mp_content(review_id, opts)
     if not opts.skip_mp_auth_headers then
         local wr_ticket = self.settings:get("wr_ticket", "")
         if wr_ticket ~= "" then custom_headers["x-wr-ticket"] = wr_ticket end
-        
+
         local wrpa = self.settings:get("wr_wrpa", "")
         if wrpa ~= "" then custom_headers["x-wrpa-0"] = wrpa end
     end

@@ -4,6 +4,11 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
 
+if ! command -v rg >/dev/null 2>&1; then
+    echo "error: ripgrep (rg) is required for the Lua namespace check" >&2
+    exit 1
+fi
+
 failed=0
 
 for legacy_dir in lib ui; do

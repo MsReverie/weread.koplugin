@@ -105,7 +105,7 @@ function NativeThoughtPopup:_textWidgets()
 end
 
 function NativeThoughtPopup:_measureDisplayPages()
-    local _scroll_widget, box_widget = self:_textWidgets()
+    local _, box_widget = self:_textWidgets()
     if not box_widget then
         logger.warn("weread: thought popup text widget unavailable, keeping one item per page")
         return
