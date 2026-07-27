@@ -15,10 +15,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install LuaJIT
+      - name: Install Lua tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y luajit
+          sudo apt-get install -y luajit luarocks
+          sudo luarocks install luacheck
+
+      - name: Lua namespace policy
+        run: bash scripts/check_lua_namespace.sh
+
+      - name: Lua static analysis
+        run: luacheck main.lua _meta.lua weread spec
 
       - name: Lua syntax check
         run: |
@@ -27,6 +34,9 @@ jobs:
             -print0 | while IFS= read -r -d '' file; do
               luajit -b "$file" /tmp/luajit-check.out
             done
+
+      - name: Lua unit and component specs
+        run: bash scripts/run_lua_specs.sh
 
       - name: Python syntax check
         run: |

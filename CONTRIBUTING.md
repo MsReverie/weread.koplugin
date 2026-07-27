@@ -143,7 +143,9 @@ Feature PRs must describe:
 Before submitting a PR, run the relevant checks if possible:
 
 ```bash
-find . -name '*.lua' -print0 | xargs -0 -n1 luac -p
+bash scripts/run_lua_specs.sh
+bash scripts/check_lua_namespace.sh
+luacheck main.lua _meta.lua weread spec
 python3 -m py_compile scripts/*.py
 rg -n -P "wrk-(?!x{8,})[A-Za-z0-9_-]{12,}|(wr_skey|wr_rt|wr_vid|ptcz)=((?!XXX)[^;[:space:]'\''\"]{8,})|x-wrpa-[0-9]+:\s*((?!\.\.\.)[A-Za-z0-9+/=_-]{12,})|thirdwx[=:]\s*[A-Za-z0-9_-]{8,}" . --glob '!cache/**' --glob '!*.epub'
 ```
@@ -151,7 +153,15 @@ rg -n -P "wrk-(?!x{8,})[A-Za-z0-9_-]{12,}|(wr_skey|wr_rt|wr_vid|ptcz)=((?!XXX)[^
 提交 PR 前，如果可以，请运行相关检查：
 
 ```bash
-find . -name '*.lua' -print0 | xargs -0 -n1 luac -p
+bash scripts/run_lua_specs.sh
+bash scripts/check_lua_namespace.sh
+luacheck main.lua _meta.lua weread spec
 python3 -m py_compile scripts/*.py
 rg -n -P "wrk-(?!x{8,})[A-Za-z0-9_-]{12,}|(wr_skey|wr_rt|wr_vid|ptcz)=((?!XXX)[^;[:space:]'\''\"]{8,})|x-wrpa-[0-9]+:\s*((?!\.\.\.)[A-Za-z0-9+/=_-]{12,})|thirdwx[=:]\s*[A-Za-z0-9_-]{8,}" . --glob '!cache/**' --glob '!*.epub'
 ```
+
+See [docs/testing.md](docs/testing.md) for the test layers, required regression
+coverage, and the pinned KOReader PluginLoader integration test.
+
+测试分层、回归测试要求和固定 KOReader 版本的 PluginLoader 集成测试说明，见
+[docs/testing.md](docs/testing.md)。
