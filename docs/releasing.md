@@ -23,9 +23,16 @@ from `_meta.lua`. A custom output path may be passed as the first argument.
 
 ## Manual GitHub package / 手动打包
 
-Open **Actions → Release → Run workflow**. A manual run validates the current
-version, builds the zip and SHA-256 checksum, and uploads both as a workflow
-artifact retained for 14 days. It does not create a tag or GitHub Release.
+Open **Actions → Release → Run workflow**. The optional `package_label` input
+controls the filename:
+
+- leave it empty to use the first eight characters of the selected commit ID;
+- enter a label such as `preview-1` to create
+  `weread.koplugin-preview-1.zip`.
+
+A manual run validates the current version, builds the zip and SHA-256
+checksum, and uploads them as two separate workflow artifacts retained for 14
+days. It does not create a tag or GitHub Release.
 
 ## Automatic release / 自动发布
 
@@ -41,3 +48,12 @@ To publish a release:
 
 Pushes that keep an existing version do not publish anything. Reusing an
 existing release tag fails deliberately; bump to a new version instead.
+Automatic packages use the versioned filename
+`weread.koplugin-vX.Y.Z.zip`. The zip and its `.sha256` checksum are separate
+workflow artifacts and separate GitHub Release assets.
+
+GitHub automatically generates the English release notes from merged pull
+requests since the previous tag. The generated body includes **What's
+Changed**, **New Contributors** when applicable, and a **Full Changelog**
+comparison link. After publication, maintainers can edit the Release and add
+the Chinese summary above the generated English notes.

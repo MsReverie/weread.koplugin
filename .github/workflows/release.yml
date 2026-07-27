@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      package_label:
+        description: Optional package label; defaults to the first 8 characters of the commit ID
+        required: false
+        type: string
   workflow_run:
     workflows:
       - KOReader integration
@@ -34,6 +39,7 @@ jobs:
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
+          MANUAL_LABEL: ${{ inputs.package_label }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
@@ -51,9 +57,16 @@ jobs:
 
           automatic_release=false
           tag="v$current"
+          package_label="$tag"
           if [[ "$EVENT_NAME" == "workflow_run" ]]; then
             if ! git rev-parse --verify --quiet "refs/tags/$tag"; then
               automatic_release=true
+            fi
+          else
+            package_label="${MANUAL_LABEL:-${TARGET_SHA:0:8}}"
+            if [[ ! "$package_label" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$ ]]; then
+              echo "error: package_label must be 1-40 letters, numbers, dots, underscores, or hyphens" >&2
+              exit 1
             fi
           fi
 
@@ -61,7 +74,8 @@ jobs:
           echo "automatic_release=$automatic_release"
           echo "version=$current" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "archive=dist/weread.koplugin-v$current.zip" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=weread.koplugin-$package_label" >> "$GITHUB_OUTPUT"
+          echo "archive=dist/weread.koplugin-$package_label.zip" >> "$GITHUB_OUTPUT"
           echo "automatic_release=$automatic_release" >> "$GITHUB_OUTPUT"
           echo "target_sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
@@ -120,17 +134,24 @@ jobs:
             exit 1
           fi
 
-      - name: Upload manual or release artifact
+      - name: Upload plugin package artifact
         if: github.event_name == 'workflow_dispatch' || steps.version.outputs.automatic_release == 'true'
         uses: actions/upload-artifact@v6
         with:
-          name: weread.koplugin-v${{ steps.version.outputs.version }}
-          path: |
-            ${{ steps.version.outputs.archive }}
-            ${{ steps.version.outputs.archive }}.sha256
+          name: ${{ steps.version.outputs.artifact_name }}
+          path: ${{ steps.version.outputs.archive }}
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+      - name: Upload checksum artifact
+        if: github.event_name == 'workflow_dispatch' || steps.version.outputs.automatic_release == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ steps.version.outputs.artifact_name }}-checksum
+          path: ${{ steps.version.outputs.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Ensure release tag is new
         if: steps.version.outputs.automatic_release == 'true'
