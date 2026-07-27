@@ -87,7 +87,6 @@ package.preload["weread.lib.migrations"] = function()
 end
 package.preload["weread.lib.plugin_util"] = function()
     return {
-        LOG_MODULE = "[WeRead test]",
         tr = function(text) return text end,
     }
 end

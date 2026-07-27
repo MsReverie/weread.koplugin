@@ -10,6 +10,7 @@ local timeout_calls = {}
 local reset_count = 0
 local requests = {}
 local responses = {}
+local logs = {}
 
 package.preload["ltn12"] = function()
     return {
@@ -18,6 +19,19 @@ package.preload["ltn12"] = function()
                 return function() return value end
             end,
         },
+    }
+end
+package.preload["logger"] = function()
+    local function capture(level, ...)
+        local parts = { level }
+        for i = 1, select("#", ...) do
+            parts[#parts + 1] = tostring(select(i, ...))
+        end
+        logs[#logs + 1] = table.concat(parts, " ")
+    end
+    return {
+        info = function(...) capture("info", ...) end,
+        err = function(...) capture("error", ...) end,
     }
 end
 package.preload["socketutil"] = function()
@@ -48,7 +62,10 @@ package.preload["socket.http"] = function()
     }
 end
 package.preload["weread.lib.protocol"] = function()
-    return { USER_AGENT = "WeRead client spec" }
+    return {
+        USER_AGENT = "WeRead client spec",
+        SKILL_VERSION = "test-skill",
+    }
 end
 
 local Client = require("weread.lib.client")
@@ -143,5 +160,128 @@ ok, err = pcall(function()
 end)
 expect(not ok and tostring(err):find("Too many redirects", 1, true),
     "redirect limit was not enforced")
+
+logs = {}
+responses[#responses + 1] = {
+    body = "{\"errcode\":-202,\"errmsg\":\"raw response\"}",
+    code = 499,
+    headers = { ["content-type"] = "application/json" },
+}
+ok, err = pcall(function()
+    client:get_text("https://weread.qq.com/web/failing-api")
+end)
+expect(not ok and tostring(err):find("HTTP 499", 1, true),
+    "HTTP error details were not preserved")
+local raw_response_log = table.concat(logs, "\n")
+expect(raw_response_log:find(
+    'response_body= {"errcode":-202,"errmsg":"raw response"}',
+    1,
+    true
+), "HTTP failure log omitted the raw response body")
+
+logs = {}
+local gateway_settings = {
+    get = function(_self, key, default)
+        if key == "api_key" then return "private-api-key" end
+        return default
+    end,
+    merge_set_cookie = function() end,
+}
+local gateway_client = Client:new(gateway_settings)
+gateway_client.json_encode = function() return "{}" end
+gateway_client.json_decode = function()
+    return { errcode = -202, errmsg = "-202" }
+end
+responses[#responses + 1] = {
+    body = '{"errcode":-202,"errmsg":"-202"}',
+    code = 499,
+    headers = { ["content-type"] = "application/json" },
+}
+ok = pcall(function()
+    gateway_client:gateway("/shelf/sync", {})
+end)
+expect(not ok, "gateway HTTP failure was not propagated")
+local gateway_failure_log = table.concat(logs, "\n")
+expect(gateway_failure_log:find("api= /shelf/sync", 1, true),
+    "gateway failure log omitted the logical API name")
+expect(requests[#requests].diagnostic_api == nil,
+    "diagnostic API metadata leaked into the HTTP request options")
+
+logs = {}
+client.json_decode = function(_self, _text)
+    return { errcode = -300, errmsg = "application failure" }
+end
+local application_result = client:decode_http_json(
+    '{"errcode":-300,"errmsg":"application failure"}',
+    {
+        method = "POST",
+        url = "https://i.weread.qq.com/api/agent/gateway",
+        code = 200,
+        headers = { ["content-type"] = "application/json" },
+    }
+)
+expect(application_result.errcode == -300,
+    "application error response was not returned to the caller")
+local application_error_log = table.concat(logs, "\n")
+expect(application_error_log:find(
+    'response_body= {"errcode":-300,"errmsg":"application failure"}',
+    1,
+    true
+), "application failure log omitted the raw response body")
+
+logs = {}
+client.json_decode = function()
+    error("invalid JSON")
+end
+ok, err = pcall(function()
+    client:decode_http_json("<not-json>", {
+        method = "GET",
+        url = "https://weread.qq.com/web/invalid-json",
+        code = 200,
+    })
+end)
+expect(not ok and tostring(err):find("invalid JSON", 1, true),
+    "JSON decode failure was not preserved")
+local decode_failure_log = table.concat(logs, "\n")
+expect(decode_failure_log:find("response_body= <not-json>", 1, true),
+    "JSON decode failure log omitted the raw response body")
+
+local shelf_client = Client:new(settings)
+shelf_client.gateway = function(_self, api_name, params)
+    expect(api_name == "/shelf/sync", "shelf helper used the wrong endpoint")
+    expect(type(params) == "table" and next(params) == nil,
+        "shelf helper unexpectedly sent parameters")
+    return {
+        books = { { bookId = "private-book-id", title = "Private title" } },
+        archive = {},
+        albums = {},
+        mp = {},
+    }, 200, {}
+end
+local shelf = shelf_client:get_shelf()
+expect(#shelf.books == 1, "shelf helper did not return the response")
+local success_log = table.concat(logs, "\n")
+expect(success_log:find("api=/shelf/sync", 1, true),
+    "shelf diagnostics omitted the endpoint")
+expect(success_log:find("skill_version= test-skill", 1, true),
+    "shelf diagnostics omitted the skill version")
+expect(success_log:find("books= table(1)", 1, true),
+    "shelf diagnostics omitted the response shape")
+expect(not success_log:find("private-book-id", 1, true)
+    and not success_log:find("Private title", 1, true),
+    "shelf diagnostics leaked response contents")
+
+logs = {}
+shelf_client.gateway = function()
+    error("HTTP 499, error_code=-202, error_message=-202")
+end
+ok, err = pcall(function()
+    shelf_client:get_shelf()
+end)
+expect(not ok and tostring(err):find("error_code=-202", 1, true),
+    "shelf helper did not preserve the gateway error")
+local failure_log = table.concat(logs, "\n")
+expect(failure_log:find("shelf sync failed", 1, true),
+    "shelf failure diagnostics were not written")
 
 print(("client_spec: %d checks"):format(checks))

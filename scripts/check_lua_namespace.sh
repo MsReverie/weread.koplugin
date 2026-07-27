@@ -24,6 +24,14 @@ if rg -n --pcre2 "$legacy_pattern" --glob '*.lua' main.lua _meta.lua weread; the
     failed=1
 fi
 
+if rg -n 'require[[:space:]]*\([[:space:]]*["'\'']logger["'\'']' \
+    --glob '*.lua' \
+    --glob '!weread/lib/logger.lua' \
+    main.lua _meta.lua weread; then
+    echo "error: use weread.lib.logger so project log messages receive a consistent prefix" >&2
+    failed=1
+fi
+
 unexpected_modules="$(
     find weread -type f -name '*.lua' \
         ! -path 'weread/lib/*' \

@@ -1,8 +1,7 @@
 local Content = require("weread.lib.content")
-local logger = require("logger")
+local logger = require("weread.lib.logger")
 
 local PluginUtil = require("weread.lib.plugin_util")
-local LOG_MODULE = PluginUtil.LOG_MODULE
 local log_error = PluginUtil.log_error
 
 local Migrations = {}
@@ -34,11 +33,11 @@ function Migrations.run(settings, client)
         settings:flush()
     end)
     if ok then
-        logger.info(LOG_MODULE, "legacy per-book data migrated:",
+        logger.info("legacy per-book data migrated:",
             "catalogs=", tostring(migrated),
             "catalog_failures=", tostring(failed))
     else
-        logger.err(LOG_MODULE, "legacy per-book data migration failed:",
+        logger.err("legacy per-book data migration failed:",
             log_error(err))
     end
 end
