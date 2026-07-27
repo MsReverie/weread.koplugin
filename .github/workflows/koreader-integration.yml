@@ -33,10 +33,10 @@ jobs:
 
     steps:
       - name: Checkout plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout pinned KOReader
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: koreader/koreader
           ref: ${{ env.KOREADER_COMMIT }}
@@ -45,7 +45,7 @@ jobs:
           fetch-depth: 0
 
       - name: Restore KOReader build cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .koreader-integration/build
           key: koreader-linux-${{ env.KOREADER_COMMIT }}-v1
