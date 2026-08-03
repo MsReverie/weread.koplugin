@@ -874,6 +874,24 @@ function Downloader:_step(dl)
             end
             return
         end
+        -- Add only a combined full-book EPUB to the local collection. In
+        -- separate-chapter mode `path` is an individual chapter EPUB.
+        if not dl.single_chapter and not dl.separate_chapters then
+            pcall(function()
+                local ReadCollection = require("readcollection")
+                local COLLECTION_NAME = "weread"
+                if not ReadCollection.coll then
+                    ReadCollection:_read()
+                end
+                if not ReadCollection.coll[COLLECTION_NAME] then
+                    ReadCollection:addCollection(COLLECTION_NAME)
+                end
+                if not ReadCollection:isFileInCollection(path, COLLECTION_NAME) then
+                    ReadCollection:addItem(path, COLLECTION_NAME)
+                    ReadCollection:write({ [COLLECTION_NAME] = true })
+                end
+            end)
+        end
         if #dl.failed > 0 then
             logger.warn(
                 "book download completed with skipped chapters:",

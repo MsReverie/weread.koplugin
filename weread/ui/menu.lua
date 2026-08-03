@@ -76,6 +76,12 @@ function M:getMainMenuItems()
             end),
         },
         {
+            text = _("Local bookshelf"),
+            callback = self:safeCallback(_("Local bookshelf"), function()
+                self:showWereadCollection()
+            end),
+        },
+        {
             text = _("Search"),
             callback = self:safeCallback(_("Search"), function()
                 self:showSearch()
@@ -471,6 +477,45 @@ function M:getSettingsMenuItems()
             end,
         },
     }
+end
+
+-- Open the local WeRead collection.
+-- From FileManager: open in place. From the reader: leave the book first and
+-- open via FileManager — showing the collection on top of ReaderUI leaves the
+-- document underneath, so navigating up/closing the shelf drops back into it.
+function M:showWereadCollection()
+    local COLLECTION_NAME = "weread"
+    local FileManager = require("apps/filemanager/filemanager")
+    local ReadCollection = require("readcollection")
+
+    if not ReadCollection.coll then
+        ReadCollection:_read()
+    end
+    if not ReadCollection.coll[COLLECTION_NAME] then
+        ReadCollection:addCollection(COLLECTION_NAME)
+        ReadCollection:write({ [COLLECTION_NAME] = true })
+    end
+
+    local fm = FileManager.instance
+    if fm and fm.collections then
+        fm.collections:onShowColl(COLLECTION_NAME)
+        return
+    end
+    if self.ui and self.ui.document and self.ui.showFileManager then
+        local file = self.ui.document.file
+        self.ui:onClose()
+        self.ui:showFileManager(file)
+        UIManager:scheduleIn(0.1, function()
+            local fm2 = FileManager.instance
+            if fm2 and fm2.collections then
+                fm2.collections:onShowColl(COLLECTION_NAME)
+            end
+        end)
+        return
+    end
+    if self.ui and self.ui.collections then
+        self.ui.collections:onShowColl(COLLECTION_NAME)
+    end
 end
 
 -- Let the user pick how wide the left/right page-turn edge zone is (percent of
