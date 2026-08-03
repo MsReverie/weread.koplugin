@@ -61,6 +61,7 @@ local cache = {
     download_underlines_and_thoughts = false,
     show_prefetch_notifications = true,
 }
+local available_version
 local host = {
     ui = {},
     version = "test",
@@ -73,7 +74,7 @@ local host = {
         flush = function() end,
     },
     downloader = { cancelPrefetch = function() end },
-    updater = { available_version = function() return nil end },
+    updater = { available_version = function() return available_version end },
     safeCallback = function(_self, _label, callback) return callback end,
 }
 for key, value in pairs(Menu) do host[key] = value end
@@ -102,9 +103,31 @@ expect(bookshelf_action and bookshelf_action.title == "WeRead · Bookshelf",
 
 local settings_items = host:getSettingsMenuItems()
 local last_settings_item = settings_items[#settings_items]
-expect(last_settings_item and last_settings_item.text_func
-        and last_settings_item.text_func() == "Update management",
-    "update management is the last settings menu item")
+expect(last_settings_item and last_settings_item.text == "About",
+    "about is the last settings menu item")
+local about_items = last_settings_item and last_settings_item.sub_item_table_func()
+expect(about_items and #about_items == 5,
+    "about contains version, author, and three update settings")
+expect(about_items[1] and about_items[1].text == "Version %1",
+    "version is the first about item")
+expect(about_items[2] and about_items[2].text == "Author: %1",
+    "author is the second about item")
+expect(about_items[3] and about_items[3].text == "Check for updates"
+        and about_items[4].text == "Automatically check once a day"
+        and about_items[5].text == "Prefer proxy for updates",
+    "update settings follow version and author at the same level")
+available_version = "0.7.0"
+local update_available_items = last_settings_item.sub_item_table_func()
+expect(#update_available_items == 5
+        and update_available_items[3].text == "Update to v%1",
+    "available update replaces the check item without adding a sixth item")
+available_version = nil
+about_items[1].callback()
+expect(shown_widget and shown_widget.text:find("Disclaimer", 1, true),
+    "version item preserves the previous about dialog behavior")
+local main_items = host:getMainMenuItems()
+expect(main_items[#main_items] and main_items[#main_items].text == "Settings",
+    "about is no longer present in the outer menu")
 local download_settings
 for _, item in ipairs(settings_items) do
     if item.text == "Download settings" then download_settings = item end

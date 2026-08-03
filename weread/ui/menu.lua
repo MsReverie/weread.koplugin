@@ -108,14 +108,6 @@ function M:getMainMenuItems()
                 return self:getSettingsMenuItems()
             end,
         },
-        {
-            text = T(_("About (v%1)"), self.version),
-            callback = function()
-                UIManager:show(InfoMessage:new{
-                    text = T(_("WeRead Plugin v%1\n\nDisclaimer: This project is for personal learning and technical research only, not for commercial use. All consequences arising from the use of this project (including but not limited to account bans, data loss, etc.) are borne by the user. The project author assumes no responsibility. Please comply with WeRead's user agreement and applicable laws and regulations.\n\nhttps://github.com/finlater/weread.koplugin"), self.version),
-                })
-            end,
-        },
     }
 
     if self.ui.document then
@@ -477,15 +469,9 @@ function M:getSettingsMenuItems()
             end,
         },
         {
-            text_func = function()
-                local version = self.updater:available_version()
-                if version then
-                    return T(_("Update management · v%1 available"), version)
-                end
-                return _("Update management")
-            end,
+            text = _("About"),
             sub_item_table_func = function()
-                return self:getUpdateMenuItems()
+                return self:getAboutMenuItems()
             end,
         },
     }
@@ -530,6 +516,35 @@ function M:showWereadCollection()
     end
 end
 
+function M:showAbout()
+    UIManager:show(InfoMessage:new{
+        text = T(_("WeRead Plugin v%1\n\nDisclaimer: This project is for personal learning and technical research only, not for commercial use. All consequences arising from the use of this project (including but not limited to account bans, data loss, etc.) are borne by the user. The project author assumes no responsibility. Please comply with WeRead's user agreement and applicable laws and regulations.\n\nhttps://github.com/finlater/weread.koplugin"), self.version),
+    })
+end
+
+function M:getAboutMenuItems()
+    local items = {
+        {
+            text = T(_("Version %1"), self.version),
+            callback = function()
+                self:showAbout()
+            end,
+        },
+        {
+            text = T(_("Author: %1"), "finlater"),
+            callback = function()
+                UIManager:show(InfoMessage:new{
+                    text = "finlater\n\nhttps://github.com/finlater",
+                })
+            end,
+        },
+    }
+    for _, item in ipairs(self:getUpdateMenuItems()) do
+        items[#items + 1] = item
+    end
+    return items
+end
+
 function M:getUpdateMenuItems()
     local items = {}
     local available = self.updater:available_version()
@@ -540,13 +555,14 @@ function M:getUpdateMenuItems()
                 self.updater:show_cached_update()
             end),
         })
+    else
+        table.insert(items, {
+            text = _("Check for updates"),
+            callback = self:safeCallback(_("Check for updates"), function()
+                self.updater:check(true)
+            end),
+        })
     end
-    table.insert(items, {
-        text = _("Check for updates"),
-        callback = self:safeCallback(_("Check for updates"), function()
-            self.updater:check(true)
-        end),
-    })
     table.insert(items, {
         text = _("Automatically check once a day"),
         keep_menu_open = true,
