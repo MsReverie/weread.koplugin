@@ -58,11 +58,14 @@ local function remove_file(path)
 end
 
 local function remove_tree(path)
-    if not path or path == "" then return end
+    if not path or path == "" then return nil, "invalid directory" end
     local ok, ffiutil = pcall(require, "ffi/util")
     if ok and ffiutil and ffiutil.purgeDir then
-        pcall(ffiutil.purgeDir, path)
+        local removed, err = pcall(ffiutil.purgeDir, path)
+        if removed then return true end
+        return nil, err
     end
+    return nil, "directory cleanup unavailable"
 end
 
 local function make_path(path)
@@ -334,6 +337,24 @@ function Updater:cached_release()
         notes = state.release_notes ~= "" and state.release_notes or nil,
         release_url = state.release_url,
     }
+end
+
+-- The backup must survive installation so a failed activation can be rolled
+-- back. Reaching the end of the next plugin initialization confirms that the
+-- new copy can load, at which point the previous copy is no longer needed.
+function Updater:cleanup_backup()
+    local backup = self.plugin_dir .. ".backup"
+    local ok_lfs, lfs = pcall(require, "libs/libkoreader-lfs")
+    if ok_lfs and lfs and not lfs.attributes(backup, "mode") then
+        return true
+    end
+    local removed, err = remove_tree(backup)
+    if removed then
+        logger.info("previous update backup removed")
+        return true
+    end
+    logger.warn("could not remove previous update backup:", tostring(err))
+    return nil, err
 end
 
 function Updater:install_release(release, on_progress)

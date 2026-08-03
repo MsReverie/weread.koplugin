@@ -19,7 +19,7 @@ package.preload["ui/widget/confirmbox"] = function()
     return { new = function(_, value) return value end }
 end
 package.preload["weread.lib.logger"] = function()
-    return { warn = function() end, err = function() end }
+    return { info = function() end, warn = function() end, err = function() end }
 end
 package.preload["weread.lib.plugin_util"] = function()
     return {
@@ -152,6 +152,25 @@ local updater = Updater:new{
     current_version = "0.6.0",
     plugin_dir = "/tmp/weread.koplugin",
 }
+local backup_exists, purged_path = true, nil
+package.loaded["libs/libkoreader-lfs"] = {
+    attributes = function(path)
+        if path == updater.plugin_dir .. ".backup" and backup_exists then
+            return "directory"
+        end
+    end,
+}
+package.loaded["ffi/util"] = {
+    purgeDir = function(path) purged_path = path end,
+}
+local cleanup_ok, cleanup_err = updater:cleanup_backup()
+expect(cleanup_ok == true and cleanup_err == nil
+        and purged_path == updater.plugin_dir .. ".backup",
+    "successful startup should remove the previous update backup")
+backup_exists, purged_path = false, nil
+cleanup_ok, cleanup_err = updater:cleanup_backup()
+expect(cleanup_ok == true and cleanup_err == nil and purged_path == nil,
+    "backup cleanup should be a no-op when no backup exists")
 local progress = {}
 local download_path = "/tmp/weread-updater-progress-spec.bin"
 local downloaded, download_err = updater:_http_get(

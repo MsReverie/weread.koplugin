@@ -68,6 +68,7 @@ local migrations_ran = false
 local dispatcher_registered = false
 local menu_registered = false
 local bookshelf_opened = false
+local backup_cleaned = false
 
 package.preload["weread.lib.client"] = function()
     return { new = function(_self, settings) return { settings = settings } end }
@@ -80,7 +81,13 @@ package.preload["weread.lib.settings"] = function()
 end
 package.preload["weread.lib.updater"] = function()
     return {
-        new = function(_self, options) return options end,
+        new = function(_self, options)
+            options.cleanup_backup = function()
+                backup_cleaned = true
+                return true
+            end
+            return options
+        end,
     }
 end
 package.preload["weread.ui.updater"] = function()
@@ -203,6 +210,8 @@ expect(plugin.qr_login.kind == "qr_login", "QR login service was not initialized
 expect(migrations_ran, "migrations did not run during initialization")
 expect(dispatcher_registered, "dispatcher actions were not registered")
 expect(menu_registered, "plugin was not registered in KOReader's main menu")
+expect(backup_cleaned,
+    "successful plugin initialization did not clean the update backup")
 expect(plugin:launch() == true and bookshelf_opened,
     "standard third-party launcher entry did not open the bookshelf")
 expect(type(plugin.openBookshelf) == "function",
