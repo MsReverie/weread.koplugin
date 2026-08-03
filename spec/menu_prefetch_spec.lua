@@ -73,6 +73,7 @@ local host = {
         flush = function() end,
     },
     downloader = { cancelPrefetch = function() end },
+    updater = { available_version = function() return nil end },
     safeCallback = function(_self, _label, callback) return callback end,
 }
 for key, value in pairs(Menu) do host[key] = value end
@@ -100,6 +101,10 @@ expect(bookshelf_action and bookshelf_action.title == "WeRead · Bookshelf",
     "bookshelf gesture action has the requested title")
 
 local settings_items = host:getSettingsMenuItems()
+local last_settings_item = settings_items[#settings_items]
+expect(last_settings_item and last_settings_item.text_func
+        and last_settings_item.text_func() == "Update management",
+    "update management is the last settings menu item")
 local download_settings
 for _, item in ipairs(settings_items) do
     if item.text == "Download settings" then download_settings = item end

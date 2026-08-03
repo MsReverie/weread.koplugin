@@ -167,18 +167,6 @@ end
 function M:getSettingsMenuItems()
     return {
         {
-            text_func = function()
-                local version = self.updater:available_version()
-                if version then
-                    return T(_("Update management · v%1 available"), version)
-                end
-                return _("Update management")
-            end,
-            sub_item_table_func = function()
-                return self:getUpdateMenuItems()
-            end,
-        },
-        {
             text = _("Cache management"),
             sub_item_table_func = function()
                 return {
@@ -486,6 +474,18 @@ function M:getSettingsMenuItems()
                         end),
                     },
                 }
+            end,
+        },
+        {
+            text_func = function()
+                local version = self.updater:available_version()
+                if version then
+                    return T(_("Update management · v%1 available"), version)
+                end
+                return _("Update management")
+            end,
+            sub_item_table_func = function()
+                return self:getUpdateMenuItems()
             end,
         },
     }
