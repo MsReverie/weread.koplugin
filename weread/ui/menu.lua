@@ -83,6 +83,7 @@ function M:getMainMenuItems()
         },
         {
             text = _("Search"),
+            keep_menu_open = true,
             callback = self:safeCallback(_("Search"), function()
                 self:showSearch()
             end),
@@ -98,6 +99,7 @@ function M:getMainMenuItems()
         },
         {
             text = _("Reading statistics"),
+            keep_menu_open = true,
             callback = self:safeCallback(_("Reading statistics"), function()
                 self:showReadStats()
             end),
@@ -113,6 +115,7 @@ function M:getMainMenuItems()
     if self.ui.document then
         table.insert(items, 2, {
             text = _("Sync progress now"),
+            keep_menu_open = true,
             enabled_func = function()
                 local book_id = self:detectWeReadBook()
                 return book_id ~= nil and not WeRead.is_mp_book(book_id)
@@ -123,6 +126,7 @@ function M:getMainMenuItems()
         })
         table.insert(items, 3, {
             text = _("Book details"),
+            keep_menu_open = true,
             callback = self:safeCallback(_("Book details"), function()
                 self:showCurrentBookDetails()
             end),
@@ -164,12 +168,14 @@ function M:getSettingsMenuItems()
                 return {
                     {
                         text = _("Scan and match local books"),
+                        keep_menu_open = true,
                         callback = self:safeCallback(_("Scan and match local books"), function()
                             self:confirmScanLocalCache()
                         end),
                     },
                     {
                         text = _("Cache cleanup"),
+                        keep_menu_open = true,
                         callback = self:safeCallback(_("Cache cleanup"), function()
                             self:showCacheManagement()
                         end),
@@ -447,6 +453,7 @@ function M:getSettingsMenuItems()
                 return {
                     {
                         text = _("Account status"),
+                        keep_menu_open = true,
                         callback = self:safeCallback(_("Account status"), function()
                             self:showAccountStatus()
                         end),
@@ -526,12 +533,14 @@ function M:getAboutMenuItems()
     local items = {
         {
             text = T(_("Version %1"), self.version),
+            keep_menu_open = true,
             callback = function()
                 self:showAbout()
             end,
         },
         {
             text = T(_("Author: %1"), "finlater"),
+            keep_menu_open = true,
             callback = function()
                 UIManager:show(InfoMessage:new{
                     text = "finlater\n\nhttps://github.com/finlater",
@@ -551,6 +560,7 @@ function M:getUpdateMenuItems()
     if available then
         table.insert(items, {
             text = T(_("Update to v%1"), available),
+            keep_menu_open = true,
             callback = self:safeCallback(_("Update plugin"), function()
                 self.updater:show_cached_update()
             end),
@@ -558,6 +568,7 @@ function M:getUpdateMenuItems()
     else
         table.insert(items, {
             text = _("Check for updates"),
+            keep_menu_open = true,
             callback = self:safeCallback(_("Check for updates"), function()
                 self.updater:check(true)
             end),

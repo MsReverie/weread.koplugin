@@ -108,6 +108,10 @@ expect(last_settings_item and last_settings_item.text == "About",
 local about_items = last_settings_item and last_settings_item.sub_item_table_func()
 expect(about_items and #about_items == 5,
     "about contains version, author, and three update settings")
+for index, item in ipairs(about_items or {}) do
+    expect(item.keep_menu_open == true,
+        "about item " .. index .. " keeps the menu open")
+end
 expect(about_items[1] and about_items[1].text == "Version %1",
     "version is the first about item")
 expect(about_items[2] and about_items[2].text == "Author: %1",
@@ -128,10 +132,22 @@ expect(shown_widget and shown_widget.text:find("Disclaimer", 1, true),
 local main_items = host:getMainMenuItems()
 expect(main_items[#main_items] and main_items[#main_items].text == "Settings",
     "about is no longer present in the outer menu")
+for _, item in ipairs(main_items) do
+    if item.text == "Search" or item.text == "Reading statistics" then
+        expect(item.keep_menu_open == true,
+            item.text .. " keeps the main menu open while its dialog is shown")
+    end
+end
 local download_settings
+local cache_management
 for _, item in ipairs(settings_items) do
     if item.text == "Download settings" then download_settings = item end
+    if item.text == "Cache management" then cache_management = item end
 end
+local cache_items = cache_management and cache_management.sub_item_table_func() or {}
+expect(cache_items[1] and cache_items[1].keep_menu_open == true
+        and cache_items[2] and cache_items[2].keep_menu_open == true,
+    "cache dialogs keep the settings menu open")
 local download_items = download_settings and download_settings.sub_item_table_func()
 local prefetch
 for _, item in ipairs(download_items or {}) do
