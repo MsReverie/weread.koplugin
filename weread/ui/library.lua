@@ -66,11 +66,26 @@ function M:showBookshelf()
     self:refreshBookshelf()
 end
 
-function M:onWeReadAccountChanged()
-    if self.shelf_view then
-        UIManager:close(self.shelf_view)
-        self.shelf_view = nil
+function M:closeWeReadUI()
+    -- Close from the topmost view down so no full-screen WeRead widget remains
+    -- in UIManager's window stack after a document is opened.
+    local seen = {}
+    for _, field in ipairs({
+        "_chapter_list_view",
+        "_book_detail_view",
+        "shelf_view",
+    }) do
+        local view = self[field]
+        self[field] = nil
+        if view and not seen[view] then
+            seen[view] = true
+            UIManager:close(view)
+        end
     end
+end
+
+function M:onWeReadAccountChanged()
+    self:closeWeReadUI()
     self.shelf_regular = nil
     self.shelf_mp = nil
     self.shelf_books = nil
@@ -564,6 +579,7 @@ function M:showBookMenu(book)
             self:refreshBookRecord(book, view)
         end),
     })
+    self._book_detail_view = view
     return view
 end
 
@@ -993,7 +1009,12 @@ function M:showChapterList(book, on_close)
                 source = chapter,
             }
         end
-        if old_view then UIManager:close(old_view) end
+        if old_view then
+            UIManager:close(old_view)
+            if self._chapter_list_view == old_view then
+                self._chapter_list_view = nil
+            end
+        end
         local view
         view = ChapterListView.show({
             title = book.title or _("Chapter list"),
@@ -1021,8 +1042,14 @@ function M:showChapterList(book, on_close)
                     end)
                 end)
             end,
-            on_close = on_close,
+            on_close = function()
+                if self._chapter_list_view == view then
+                    self._chapter_list_view = nil
+                end
+                if on_close then on_close() end
+            end,
         })
+        self._chapter_list_view = view
     end
     self:loadChapters(book, function(chapters)
         showCatalog(chapters)
@@ -1114,6 +1141,7 @@ function M:openFile(path)
         self:showInfo(_("No cached file."))
         return
     end
+    self:closeWeReadUI()
     if self.ui.document then
         self.ui:switchDocument(path)
     else
