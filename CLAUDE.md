@@ -149,6 +149,19 @@ Pre-commit scan:
 rg -n "wrk-|wr_skey[=]|wr_rt[=]|wr_vid[=]|ptcz[=]|x-wrpa|thirdwx" -S .
 ```
 
+## Release Workflow
+
+When the user asks to publish a new version:
+
+1. Pull the latest remote `main` with a fast-forward-only update and verify the worktree is clean.
+2. Compare the latest release tag with `main`, then draft a concise, user-facing Chinese Changelog. Avoid implementation jargon and thank the relevant contributors.
+3. Show the draft to the user and wait for explicit approval. Do not change version files, commit, push, tag, or publish before approval.
+4. After approval, add the matching version section to `CHANGELOG.md` and update both `_meta.lua` and `main.lua` to the same version.
+5. Run the repository's release checks: Lua specs, namespace checks, Luacheck, Python compilation, release-note extraction, package verification, and sensitive-information scanning.
+6. Commit the release changes and push `main`. Do not create the release tag manually; let GitHub Actions create the tag and GitHub Release.
+7. Wait for normal CI, the pinned KOReader integration test, and the Release workflow. Verify the tag, release URL, package, and checksum before reporting success.
+8. Generate a vertical release poster in the established warm ivory, forest-green, minimalist editorial style. Give the main feature the strongest visual emphasis and summarize other improvements in smaller cards. Keep contributor acknowledgements in the Changelog unless the user asks to place them on the poster.
+
 ## Unimplemented Features (WIP)
 
 These are placeholder menu items shown when a WeRead book is open, currently greyed out:
